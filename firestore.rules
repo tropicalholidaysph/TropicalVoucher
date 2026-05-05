@@ -1,33 +1,10 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Check if user is authenticated via Firebase Auth
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Support for the specific collection names used in the application logic
-    // We allow read/write for any signed-in user for this MVP
-    match /ledgers/{ledgerId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /vouchers/{voucherId} {
-      allow read, write: if isSignedIn();
-    }
-
-    // Legacy support for paymentVouchers path
-    match /paymentVouchers/{voucherId} {
-      allow read, write: if isSignedIn();
-    }
-
-    // Authorization Registry (Optional for this setup)
-    match /authorizedUsers/{userId} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow write: if false;
+    // Allow read and write access to all documents for any authenticated user.
+    // This supports our ledger and voucher system for authorized employees.
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }
