@@ -186,7 +186,7 @@ export function VoucherTable() {
             const purpose = String(row["Being (Purpose)"] || row["Purpose"] || "").trim();
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"];
 
-            // Filter out truly empty rows to avoid junk data
+            // SKIP empty rows entirely as requested
             if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) {
               return;
             }
@@ -234,10 +234,11 @@ export function VoucherTable() {
   };
 
   const handleExport = () => {
-    if (filteredVouchers.length === 0) return;
+    // Only export rows that actually have data (recipient or amount)
+    const validVouchers = filteredVouchers.filter(v => v.recipient !== "VOID / NO DATA" || v.amountRO > 0);
+    if (validVouchers.length === 0) return;
     
-    // We export exactly what's shown, including voids as requested
-    const exportData = filteredVouchers.map(v => ({
+    const exportData = validVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
       "Paid To": v.recipient,
@@ -398,15 +399,15 @@ export function VoucherTable() {
                     className="border-white data-[state=checked]:bg-white data-[state=checked]:text-slate-900"
                   />
                 </TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2">Voucher No.</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2">Date</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-48 px-2">Recipient</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-right">Amt (R.O.)</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-16 px-2 text-right">Bz</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-32 px-2">Method</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-64 px-2">Purpose</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2">Bank</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2">Ref No</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Voucher No.</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Date</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-48 px-2 text-left">Recipient</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Amt (R.O.)</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-16 px-2 text-left">Bz</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-32 px-2 text-left">Method</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-64 px-2 text-left">Purpose</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Bank</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Ref No</TableHead>
                 <TableHead className="text-white font-bold text-[11px] w-24 px-2 text-center no-print">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -418,42 +419,38 @@ export function VoucherTable() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredVouchers.map((v, idx) => (
+                filteredVouchers.map((v) => (
                   <TableRow 
                     key={v.id} 
-                    className={cn(
-                      idx % 2 === 0 ? "bg-background" : "bg-muted/20",
-                      v.isVoid && "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    )}
+                    className="bg-background hover:bg-muted/30 border-b border-border/50"
                   >
                     <TableCell className="border-r border-border/50 px-2 py-1.5 text-center no-print">
                       <Checkbox 
                         checked={selectedIds.has(v.id)}
                         onCheckedChange={() => toggleSelect(v.id)}
-                        className={v.isVoid ? "border-white" : ""}
                       />
                     </TableCell>
-                    <TableCell className={cn("border-r border-border/50 px-2 py-1.5 text-[11px] font-mono font-bold")}>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] font-mono font-bold text-left">
                       {v.voucherNo}
                     </TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px]">{v.isVoid && v.recipient === "VOID / NO DATA" ? "VOID" : v.date}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] font-bold">
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] text-left">{v.isVoid && v.recipient === "VOID / NO DATA" ? "VOID" : v.date}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] font-bold text-left">
                       {v.recipient}
                     </TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-right font-black text-[11px]">{v.isVoid ? "0" : v.amountRO.toLocaleString()}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-right font-mono text-[11px]">{v.isVoid ? "000" : v.amountBz.toString().padStart(3, '0')}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[10px] uppercase font-semibold">{v.paymentMethod}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate italic">{v.bankName || "-"}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-left font-black text-[11px]">{v.isVoid ? "0" : v.amountRO.toLocaleString()}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-left font-mono text-[11px]">{v.isVoid ? "000" : v.amountBz.toString().padStart(3, '0')}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[10px] uppercase font-semibold text-left">{v.paymentMethod}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate text-left" title={v.purpose}>{v.purpose}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate italic text-left">{v.bankName || "-"}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate font-mono text-left">{v.refNo || "-"}</TableCell>
                     <TableCell className="px-2 py-1 flex items-center justify-center gap-1 no-print">
                       <Link href={`/vouchers/${v.id}`}>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:bg-primary hover:text-primary-foreground">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-primary">
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
                       </Link>
                       <Link href={`/vouchers/${v.id}/edit`}>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-muted hover:text-foreground">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
                           <Edit2 className="w-3.5 h-3.5" />
                         </Button>
                       </Link>
