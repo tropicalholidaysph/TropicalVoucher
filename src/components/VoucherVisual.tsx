@@ -78,12 +78,12 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         <div className="flex items-start gap-4">
           <div className="border-2 border-neutral-800 w-[220px]">
             <div className="grid grid-cols-2 text-center border-b border-neutral-800">
-              <span className="text-[10px] font-bold py-0.5">بيسة Bz.</span>
-              <span className="text-[10px] font-bold py-0.5 border-l border-neutral-800">ريال عماني R.O.</span>
+              <span className="text-[10px] font-bold py-0.5">ريال عماني R.O.</span>
+              <span className="text-[10px] font-bold py-0.5 border-l border-neutral-800">بيسة Bz.</span>
             </div>
             <div className="grid grid-cols-2 text-center items-center h-12">
-              <span className="text-2xl font-black">{voucher.amountBz.toString().padStart(3, '0')}</span>
-              <span className="text-2xl font-black border-l border-neutral-800">{voucher.amountRO.toLocaleString()}</span>
+              <span className="text-2xl font-black">{voucher.amountRO.toLocaleString()}</span>
+              <span className="text-2xl font-black border-l border-neutral-800">{voucher.amountBz.toString().padStart(3, '0')}</span>
             </div>
           </div>
         </div>
