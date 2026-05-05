@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -50,6 +49,56 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, where } from "firebase/firestore";
 
+/**
+ * Robust date parsing for Excel imports.
+ * Handles serial numbers, DD/MM/YYYY, and MM/DD/YYYY.
+ */
+function parseExcelDate(val: any): string {
+  if (!val) return new Date().toISOString().split('T')[0];
+  
+  // Handle Excel Serial Numbers (number of days since 1900)
+  if (typeof val === 'number') {
+    const date = new Date(Math.round((val - 25569) * 864e5));
+    return isNaN(date.getTime()) ? new Date().toISOString().split('T')[0] : date.toISOString().split('T')[0];
+  }
+
+  const str = String(val).trim();
+  
+  // Try native parsing
+  let date = new Date(str);
+  if (!isNaN(date.getTime())) {
+    return date.toISOString().split('T')[0];
+  }
+
+  // Manual parse for DD/MM/YYYY or MM/DD/YYYY
+  const parts = str.split(/[\/\-\.]/);
+  if (parts.length === 3) {
+    const p0 = parseInt(parts[0]);
+    const p1 = parseInt(parts[1]);
+    const p2 = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
+
+    // Check if first part is Day (Oman standard usually uses DD/MM/YYYY)
+    // If p0 > 12, it must be day. If p1 > 12, it must be month.
+    // Defaulting to DD/MM/YYYY for Tropical Holidays context.
+    let d = p0;
+    let m = p1 - 1;
+    let y = p2;
+
+    // Basic flip logic if p0 is clearly a month (e.g. 05/31/2023)
+    if (p0 <= 12 && p1 > 12) {
+      d = p1;
+      m = p0 - 1;
+    }
+
+    const manualDate = new Date(y, m, d);
+    if (!isNaN(manualDate.getTime())) {
+      return manualDate.toISOString().split('T')[0];
+    }
+  }
+
+  return new Date().toISOString().split('T')[0];
+}
+
 export function VoucherTable() {
   const { firestore, user, isUserLoading } = useFirebase();
   const [activeLedgerId, setActiveLedgerId] = useState<string>("");
@@ -73,10 +122,8 @@ export function VoucherTable() {
   const ledgers = ledgersData || [];
 
   useEffect(() => {
-    // Only proceed if everything is loaded and we haven't already attempted initialization
     if (isUserLoading || !user || ledgersLoading || initRef.current) return;
     
-    // Check if we already have an active ledger set
     if (ledgers.length > 0) {
       if (!activeLedgerId) {
         setActiveLedgerId(ledgers[0].id);
@@ -84,7 +131,7 @@ export function VoucherTable() {
       return;
     }
 
-    // If completely empty, mark as initializing and create Sheet1
+    // Only create Sheet1 if the list is truly empty and we haven't tried yet
     initRef.current = true;
     const initializeSheet = async () => {
       try {
@@ -163,7 +210,6 @@ export function VoucherTable() {
 
           let targetLedgerId = existingLedgerNames.get(sheetName.toLowerCase());
           
-          // Create a new tab for this sheet if it doesn't exist
           if (!targetLedgerId) {
             const newLedger = await createLedger(sheetName, firestore);
             targetLedgerId = newLedger.id;
@@ -171,7 +217,7 @@ export function VoucherTable() {
           }
 
           const vouchersForSheet = json.map((row: any) => {
-            const ro = Number(row["Amount (R.O.)"] || row["RO"] || row["RIYAL"] || 0);
+            const ro = Number(row["Amount (R.O.)"] || row["RO"] || row["RIYAL"] || row["Amount"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || row["BAISA"] || 0);
             const totalAmount = ro + (bz / 1000);
             
@@ -181,9 +227,9 @@ export function VoucherTable() {
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
             return {
-              voucherNo: String(row["Voucher No"] || row["No"] || "V-" + Math.floor(Math.random()*10000)),
-              date: row["Date"] ? new Date(row["Date"]).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-              recipient: String(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || "N/A"),
+              voucherNo: String(row["Voucher No"] || row["No"] || row["Voucher #"] || "V-" + Math.floor(Math.random()*10000)),
+              date: parseExcelDate(row["Date"]),
+              recipient: String(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"] || "N/A"),
               amountRO: ro,
               amountBz: bz,
               sumInWords: convertAmountToWords(totalAmount),
@@ -215,7 +261,6 @@ export function VoucherTable() {
     reader.readAsBinaryString(file);
   };
 
-  // Client side filtering and sorting to avoid index errors
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
