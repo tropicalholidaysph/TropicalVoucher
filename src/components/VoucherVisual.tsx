@@ -4,7 +4,7 @@
 import Image from "next/image";
 import { Voucher } from "@/lib/types";
 import { format } from "date-fns";
-import { PlaceHolderImages } from "@/lib/placeholder-images";
+import { PlaceHolderImages } from "@/app/lib/placeholder-images";
 
 interface VoucherVisualProps {
   voucher: Voucher;

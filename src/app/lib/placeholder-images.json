@@ -1,0 +1,11 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "logo",
+      "description": "Tropical Holidays Logo",
+      "imageUrl": "/logo.png",
+      "imageHint": "tropical palm"
+    }
+  ]
+}
