@@ -80,7 +80,7 @@ function parseExcelDate(val: any): string {
     let m = parseInt(parts[1]) - 1; // 0-indexed
     let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
 
-    // Heuristic: If first part > 12, it must be the day
+    // Heuristic: If first part > 12, it must be the day (DD/MM/YYYY)
     if (d > 12) {
       const manualDate = new Date(y, m, d);
       if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
@@ -117,7 +117,7 @@ export function VoucherTable() {
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
 
-  // Automatically select the first ledger if none is active, but don't create one
+  // Automatically select the first ledger if none is active, but NEVER create one automatically
   useEffect(() => {
     if (ledgers.length > 0 && !activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
@@ -168,7 +168,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Reading File", description: "Mapping sheets to your ledger..." });
+    toast({ title: "Reading File", description: "Processing all sheets..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -187,6 +187,7 @@ export function VoucherTable() {
           
           if (json.length === 0) continue;
 
+          // Check if this sheet name already exists as a ledger tab
           let targetLedgerId = existingLedgerMap.get(sheetName.trim().toLowerCase());
           
           if (!targetLedgerId) {
@@ -206,6 +207,7 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
+            // Improved Voucher No identification
             const vNo = row["Voucher No"] || row["Voucher No."] || row["Sl No"] || row["SL NO"] || row["No"] || row["#"] || row["Serial No"];
 
             return {
