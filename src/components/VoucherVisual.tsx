@@ -1,4 +1,3 @@
-
 "use client";
 
 import Image from "next/image";
@@ -12,108 +11,159 @@ interface VoucherVisualProps {
 
 export function VoucherVisual({ voucher }: VoucherVisualProps) {
   return (
-    <div className="w-full max-w-[800px] mx-auto bg-[#FFFDE7] p-8 border-[3px] border-primary shadow-lg font-serif">
-      <div className="flex justify-between items-start mb-8 border-b-2 border-primary pb-4">
-        <div className="space-y-1">
-          <div className="w-24 h-24 relative flex items-center justify-center rounded-lg border-2 border-primary border-dashed bg-white">
+    <div className="w-full max-w-[850px] mx-auto bg-[#FEF9E7] p-6 sm:p-10 border border-neutral-300 shadow-xl font-serif text-[#2c3e50] relative overflow-hidden">
+      {/* Decorative inner border */}
+      <div className="absolute inset-4 border border-[#d4af37]/20 pointer-events-none" />
+
+      {/* Top Header Information */}
+      <div className="flex justify-between items-start mb-6 relative z-10">
+        <div className="text-[10px] leading-tight space-y-0.5 w-1/3">
+          <p>C.R.: 1209991</p>
+          <p>P.O. Box: 821</p>
+          <p>Postal Code: 130</p>
+          <p>Sultanate of Oman</p>
+          <p>GSM: 95304077</p>
+          <p>Office: 24616541 / 2</p>
+        </div>
+
+        <div className="flex flex-col items-center justify-center w-1/3">
+          <div className="relative w-24 h-20 mb-2">
             <Image 
               src={logo} 
               alt="Tropical Holidays Logo" 
-              width={80} 
-              height={80}
-              className="object-contain p-1"
-              data-ai-hint="tropical palm"
+              fill
+              className="object-contain"
             />
           </div>
-          <h1 className="text-2xl font-bold text-primary tracking-widest mt-2 uppercase">Tropical Holidays</h1>
-          <p className="text-xs text-muted-foreground">P.O. Box 1234, Muscat, Oman</p>
-        </div>
-        <div className="text-right">
-          <h2 className="text-4xl font-black text-primary opacity-20 uppercase tracking-tighter mb-2">Payment Voucher</h2>
-          <div className="space-y-2">
-            <div className="flex justify-end items-center gap-2">
-              <span className="text-sm font-bold uppercase text-primary">No:</span>
-              <span className="bg-white px-4 py-1 border border-primary font-mono text-lg font-bold min-w-[120px] inline-block">{voucher.voucherNo}</span>
-            </div>
-            <div className="flex justify-end items-center gap-2">
-              <span className="text-sm font-bold uppercase text-primary">Date:</span>
-              <span className="bg-white px-4 py-1 border border-primary font-mono text-lg min-w-[120px] inline-block">{format(new Date(voucher.date), 'dd/MM/yyyy')}</span>
-            </div>
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-primary tracking-tight">الاستوائية للعطلات</h1>
+            <h1 className="text-lg font-bold text-primary tracking-widest uppercase -mt-1">TROPICAL HOLIDAYS</h1>
+            <p className="text-[9px] italic text-muted-foreground">Dream. Explore. Discover.</p>
+            <p className="text-[10px] font-mono mt-1">E-mail : info@tropicalholidays.om</p>
           </div>
+        </div>
+
+        <div className="text-[10px] leading-tight space-y-0.5 w-1/3 text-right dir-rtl" dir="rtl">
+          <p>س.ت : ١٢٠٩٩٩١</p>
+          <p>ص.ب : ٨٢١</p>
+          <p>الرمز البريدي : ١٣٠</p>
+          <p>سلطنة عمان</p>
+          <p>نقال : ٩٥٣٠٤٠٧٧</p>
+          <p>المكتب : ٢٤٦١٦٥٤١/٢</p>
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex items-end gap-3 border-b border-primary/40 pb-1">
-          <span className="text-sm font-bold uppercase text-primary whitespace-nowrap">Paid To:</span>
-          <span className="flex-1 text-xl font-bold italic px-2">{voucher.recipient}</span>
+      {/* Voucher Title and Number */}
+      <div className="flex justify-between items-center mb-8 relative z-10 border-t border-b border-[#d4af37]/30 py-4">
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-bold text-red-600">No.</span>
+          <span className="text-2xl font-black text-red-600 tracking-tighter font-mono">
+            {voucher.voucherNo.replace(/[^0-9]/g, '').padStart(4, '0') || '0000'}
+          </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-          <div className="bg-white border-2 border-primary p-4">
-            <div className="grid grid-cols-2 text-center border-b border-primary pb-1 mb-2">
-              <span className="font-bold text-sm uppercase text-primary">Rial Omani</span>
-              <span className="font-bold text-sm uppercase text-primary">Baisa</span>
-            </div>
-            <div className="grid grid-cols-2 text-center items-center">
-              <span className="text-3xl font-black">{voucher.amountRO.toLocaleString()}</span>
-              <span className="text-3xl font-black">{voucher.amountBz.toString().padStart(3, '0')}</span>
-            </div>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold border-b-2 border-primary inline-block px-4 pb-1">سند صرف</h2>
+          <h3 className="text-sm font-bold tracking-widest uppercase mt-1">PAYMENT VOUCHER</h3>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold">Date :</span>
+          <div className="border-b border-dashed border-neutral-800 px-4 min-w-[120px] text-center font-mono">
+             {format(new Date(voucher.date), 'dd - MM - yyyy')}
           </div>
-          <div className="space-y-4">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-bold uppercase text-primary">Payment Method:</span>
-              <div className="flex gap-4">
-                {['Cash', 'Cheque', 'Bank Transfer'].map(m => (
-                  <div key={m} className="flex items-center gap-1">
-                    <div className={`w-4 h-4 border-2 border-primary ${voucher.paymentMethod === m ? 'bg-primary' : 'bg-white'}`} />
-                    <span className="text-xs font-bold uppercase">{m}</span>
-                  </div>
-                ))}
-              </div>
+          <span className="text-xs font-bold">التاريخ :</span>
+        </div>
+      </div>
+
+      {/* Main Form Fields */}
+      <div className="space-y-6 relative z-10 px-2">
+        {/* Amount Box Section */}
+        <div className="flex items-start gap-4">
+          <div className="border-2 border-neutral-800 w-[220px]">
+            <div className="grid grid-cols-2 text-center border-b border-neutral-800">
+              <span className="text-[10px] font-bold py-0.5">بيسة Bz.</span>
+              <span className="text-[10px] font-bold py-0.5 border-l border-neutral-800">ريال عماني R.O.</span>
             </div>
-            {voucher.bankName && (
-              <div className="flex items-end gap-2 border-b border-primary/40 pb-1">
-                <span className="text-xs font-bold uppercase text-primary">Bank:</span>
-                <span className="text-sm italic">{voucher.bankName}</span>
-              </div>
-            )}
-            {voucher.refNo && (
-              <div className="flex items-end gap-2 border-b border-primary/40 pb-1">
-                <span className="text-xs font-bold uppercase text-primary">Ref/Cheque No:</span>
-                <span className="text-sm italic font-mono">{voucher.refNo}</span>
-              </div>
-            )}
+            <div className="grid grid-cols-2 text-center items-center h-12">
+              <span className="text-2xl font-black">{voucher.amountBz.toString().padStart(3, '0')}</span>
+              <span className="text-2xl font-black border-l border-neutral-800">{voucher.amountRO.toLocaleString()}</span>
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 border-b border-primary/40 pb-1">
-          <span className="text-sm font-bold uppercase text-primary">Sum of Rial Omani:</span>
-          <span className="text-lg italic px-2 font-medium">{voucher.sumInWords}</span>
+        {/* Paid To */}
+        <div className="flex items-end gap-3 w-full">
+          <span className="text-sm font-bold whitespace-nowrap">Paid to Mr./M/s.</span>
+          <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 text-xl font-bold italic text-primary">
+            {voucher.recipient}
+          </div>
+          <span className="text-sm font-bold whitespace-nowrap">صرفنا إلى الفاضل / الأفاضل</span>
         </div>
 
-        <div className="flex flex-col gap-2 border-b-2 border-primary pb-1">
-          <span className="text-sm font-bold uppercase text-primary">Being:</span>
-          <span className="text-lg px-2 min-h-[60px] leading-relaxed">{voucher.purpose}</span>
+        {/* Sum in Words */}
+        <div className="flex items-end gap-3 w-full">
+          <span className="text-sm font-bold whitespace-nowrap">The sum of Rial Omani</span>
+          <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 text-lg italic font-medium">
+            {voucher.sumInWords}
+          </div>
+          <span className="text-sm font-bold whitespace-nowrap">مبلغ وقدره ريال عماني</span>
         </div>
 
-        <div className="grid grid-cols-3 gap-8 pt-12">
-          <div className="text-center space-y-2">
-            <div className="border-t-2 border-primary pt-1">
-              <span className="text-xs font-bold uppercase text-primary">Prepared By</span>
-            </div>
+        {/* Payment Method Details */}
+        <div className="flex items-end gap-3 w-full">
+          <span className="text-sm font-bold whitespace-nowrap">By Cash / Cheque No.</span>
+          <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 font-mono">
+            {voucher.paymentMethod === 'Cash' ? 'CASH' : (voucher.refNo || '.........................')}
           </div>
-          <div className="text-center space-y-2">
-            <div className="border-t-2 border-primary pt-1">
-              <span className="text-xs font-bold uppercase text-primary">Receiver's Signature</span>
-            </div>
+          <span className="text-sm font-bold whitespace-nowrap">نقداً / شيك رقم</span>
+        </div>
+
+        {/* Bank & Date */}
+        <div className="flex items-end gap-3 w-full">
+          <span className="text-sm font-bold whitespace-nowrap">Bank</span>
+          <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 italic">
+            {voucher.bankName || '...................................................'}
           </div>
-          <div className="text-center space-y-2">
-            <div className="border-t-2 border-primary pt-1">
-              <span className="text-xs font-bold uppercase text-primary">Authorized Signatory</span>
-            </div>
+          <span className="text-sm font-bold whitespace-nowrap">على بنك</span>
+          <span className="text-sm font-bold whitespace-nowrap mx-2">Dated</span>
+          <div className="w-[150px] border-b border-dotted border-neutral-500 pb-1 text-center font-mono">
+            {voucher.refNo ? format(new Date(voucher.date), 'dd/MM/yyyy') : '................'}
+          </div>
+          <span className="text-sm font-bold whitespace-nowrap">بتاريخ</span>
+        </div>
+
+        {/* Being (Purpose) */}
+        <div className="flex items-start gap-3 w-full pt-2">
+          <span className="text-sm font-bold whitespace-nowrap mt-1">Being</span>
+          <div className="flex-1 border-b border-dotted border-neutral-500 min-h-[60px] px-4 py-1 text-lg leading-tight">
+            {voucher.purpose}
+          </div>
+          <span className="text-sm font-bold whitespace-nowrap mt-1">وذلك عن</span>
+        </div>
+      </div>
+
+      {/* Signature Section */}
+      <div className="grid grid-cols-2 gap-20 mt-16 relative z-10 px-4">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-end gap-2 w-full">
+            <span className="text-[11px] font-bold whitespace-nowrap">Receiver's Signature</span>
+            <div className="flex-1 border-b border-neutral-800 h-8" />
+            <span className="text-[11px] font-bold whitespace-nowrap">توقيع المستلم</span>
           </div>
         </div>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-end gap-2 w-full">
+            <span className="text-[11px] font-bold whitespace-nowrap">Signature</span>
+            <div className="flex-1 border-b border-neutral-800 h-8" />
+            <span className="text-[11px] font-bold whitespace-nowrap">التوقيع</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Footer Branding Overlay (Very Faint) */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 opacity-[0.03] pointer-events-none select-none">
+        <h4 className="text-5xl font-black uppercase whitespace-nowrap">Tropical Holidays</h4>
       </div>
     </div>
   );
