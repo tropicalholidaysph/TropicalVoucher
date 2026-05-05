@@ -35,8 +35,6 @@ import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { 
   bulkImportVouchers, 
-  getVouchersByLedger, 
-  getLedgers, 
   createLedger, 
   renameLedger, 
   deleteLedger 
@@ -50,13 +48,13 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, query, orderBy, where } from "firebase/firestore";
 
 export function VoucherTable() {
-  const [ledgers, setLedgers] = useState<Ledger[]>([]);
+  const { firestore } = useFirebase();
   const [activeLedgerId, setActiveLedgerId] = useState<string>("");
-  const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
   const [isAddingLedger, setIsAddingLedger] = useState(false);
   const [newLedgerName, setNewLedgerName] = useState("");
@@ -66,39 +64,36 @@ export function VoucherTable() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadLedgers();
-  }, []);
+  // Real-time Ledgers
+  const ledgersQuery = useMemoFirebase(() => {
+    return query(collection(firestore, "ledgers"), orderBy("createdAt", "asc"));
+  }, [firestore]);
+
+  const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
+  const ledgers = ledgersData || [];
 
   useEffect(() => {
-    if (activeLedgerId) {
-      loadVouchers(activeLedgerId);
+    if (ledgers.length > 0 && !activeLedgerId) {
+      setActiveLedgerId(ledgers[0].id);
     }
-  }, [activeLedgerId]);
+  }, [ledgers, activeLedgerId]);
 
-  async function loadLedgers() {
-    const data = await getLedgers();
-    setLedgers(data);
-    if (data.length > 0 && !activeLedgerId) {
-      setActiveLedgerId(data[0].id);
-    } else if (data.length === 0) {
-      const defaultLedger = await createLedger("Main Ledger");
-      setLedgers([defaultLedger]);
-      setActiveLedgerId(defaultLedger.id);
-    }
-  }
+  // Real-time Vouchers for active ledger
+  const vouchersQuery = useMemoFirebase(() => {
+    if (!activeLedgerId) return null;
+    return query(
+      collection(firestore, "vouchers"),
+      where("ledgerId", "==", activeLedgerId),
+      orderBy("createdAt", "desc")
+    );
+  }, [firestore, activeLedgerId]);
 
-  async function loadVouchers(ledgerId: string) {
-    setLoading(true);
-    const data = await getVouchersByLedger(ledgerId);
-    setVouchers(data);
-    setLoading(false);
-  }
+  const { data: vouchersData, isLoading: vouchersLoading } = useCollection<Voucher>(vouchersQuery);
+  const vouchers = vouchersData || [];
 
   async function handleAddLedger() {
     if (!newLedgerName.trim()) return;
     const ledger = await createLedger(newLedgerName);
-    setLedgers([...ledgers, ledger]);
     setActiveLedgerId(ledger.id);
     setNewLedgerName("");
     setIsAddingLedger(false);
@@ -108,7 +103,6 @@ export function VoucherTable() {
   async function handleRenameLedger() {
     if (!editingLedger || !editName.trim()) return;
     await renameLedger(editingLedger.id, editName);
-    setLedgers(ledgers.map(l => l.id === editingLedger.id ? { ...l, name: editName } : l));
     setEditingLedger(null);
     toast({ title: "Sheet Renamed", description: `Updated to "${editName}"` });
   }
@@ -119,10 +113,9 @@ export function VoucherTable() {
       return;
     }
     await deleteLedger(id);
-    const updated = ledgers.filter(l => l.id !== id);
-    setLedgers(updated);
     if (activeLedgerId === id) {
-      setActiveLedgerId(updated[0].id);
+      const nextLedger = ledgers.find(l => l.id !== id);
+      if (nextLedger) setActiveLedgerId(nextLedger.id);
     }
     toast({ title: "Sheet Deleted" });
   }
@@ -146,7 +139,7 @@ export function VoucherTable() {
     // Explicit immediate notification
     toast({ 
       title: "File Selected", 
-      description: `Reading "${file.name}" for import into "${activeSheetName}"...` 
+      description: `Reading "${file.name}"... Processing import into "${activeSheetName}".` 
     });
     
     const reader = new FileReader();
@@ -163,11 +156,6 @@ export function VoucherTable() {
           setIsImporting(false);
           return;
         }
-
-        toast({ 
-          title: "Processing Data", 
-          description: `Importing ${json.length} records. This may take a moment...` 
-        });
 
         const vouchersToImport = json.map((row: any) => {
           const ro = Number(row["Amount (R.O.)"]) || Number(row["RO"]) || 0;
@@ -200,8 +188,6 @@ export function VoucherTable() {
           title: "Import Complete!", 
           description: `Successfully added ${vouchersToImport.length} vouchers to "${activeSheetName}".` 
         });
-        
-        loadVouchers(activeLedgerId);
       } catch (error) {
         console.error("Import error:", error);
         toast({ 
@@ -276,73 +262,69 @@ export function VoucherTable() {
 
       {/* Main Data Table */}
       <div className="rounded-md border bg-white overflow-hidden shadow-sm relative min-h-[400px]">
-        {isImporting && (
+        {(isImporting || vouchersLoading) && (
           <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center space-y-4">
             <Loader2 className="w-12 h-12 animate-spin text-primary" />
             <div className="text-center">
-              <p className="font-bold text-primary text-lg">Syncing Database...</p>
-              <p className="text-sm text-muted-foreground">Uploading records to your secure ledger.</p>
+              <p className="font-bold text-primary text-lg">
+                {isImporting ? "Syncing Database..." : "Loading Ledger..."}
+              </p>
+              <p className="text-sm text-muted-foreground">Updating records in your secure ledger.</p>
             </div>
           </div>
         )}
         
-        {loading ? (
-          <div className="h-64 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <Table className="border-collapse">
-            <TableHeader className="bg-slate-100">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="border-r border-slate-200 font-bold text-slate-700">Voucher No</TableHead>
-                <TableHead className="border-r border-slate-200 font-bold text-slate-700">Date</TableHead>
-                <TableHead className="border-r border-slate-200 font-bold text-slate-700">Paid To</TableHead>
-                <TableHead className="border-r border-slate-200 font-bold text-slate-700 text-right">Amount (R.O.)</TableHead>
-                <TableHead className="border-r border-slate-200 font-bold text-slate-700 text-right">Amount (Bz)</TableHead>
-                <TableHead className="border-r border-slate-200 font-bold text-slate-700">Method</TableHead>
-                <TableHead className="border-r border-slate-200 font-bold text-slate-700">Purpose</TableHead>
-                <TableHead className="text-center no-print font-bold text-slate-700">Action</TableHead>
+        <Table className="border-collapse">
+          <TableHeader className="bg-slate-100">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="border-r border-slate-200 font-bold text-slate-700">Voucher No</TableHead>
+              <TableHead className="border-r border-slate-200 font-bold text-slate-700">Date</TableHead>
+              <TableHead className="border-r border-slate-200 font-bold text-slate-700">Paid To</TableHead>
+              <TableHead className="border-r border-slate-200 font-bold text-slate-700 text-right">Amount (R.O.)</TableHead>
+              <TableHead className="border-r border-slate-200 font-bold text-slate-700 text-right">Amount (Bz)</TableHead>
+              <TableHead className="border-r border-slate-200 font-bold text-slate-700">Method</TableHead>
+              <TableHead className="border-r border-slate-200 font-bold text-slate-700">Purpose</TableHead>
+              <TableHead className="text-center no-print font-bold text-slate-700">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredVouchers.length === 0 && !vouchersLoading ? (
+              <TableRow>
+                <TableCell colSpan={8} className="h-64 text-center text-muted-foreground italic">
+                  {searchTerm ? "No records match your search." : "This sheet is currently empty."}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredVouchers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-64 text-center text-muted-foreground italic">
-                    {searchTerm ? "No records match your search." : "This sheet is currently empty."}
+            ) : (
+              filteredVouchers.map((v, idx) => (
+                <TableRow 
+                  key={v.id} 
+                  className={idx % 2 === 0 ? "bg-white hover:bg-slate-50" : "bg-[#f8fafc] hover:bg-slate-100"}
+                >
+                  <TableCell className="border-r border-slate-200 font-medium py-2 text-[11px]">{v.voucherNo}</TableCell>
+                  <TableCell className="border-r border-slate-200 text-[11px]">{v.date}</TableCell>
+                  <TableCell className="border-r border-slate-200 font-bold text-[11px] truncate max-w-[150px]">{v.recipient}</TableCell>
+                  <TableCell className="border-r border-slate-200 text-right font-black text-primary text-[11px]">
+                    {v.amountRO.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="border-r border-slate-200 text-right text-[11px]">
+                    {v.amountBz.toString().padStart(3, '0')}
+                  </TableCell>
+                  <TableCell className="border-r border-slate-200 text-[10px] font-bold uppercase tracking-wider">
+                    {v.paymentMethod}
+                  </TableCell>
+                  <TableCell className="border-r border-slate-200 max-w-[180px] truncate text-[11px]">{v.purpose}</TableCell>
+                  <TableCell className="text-center no-print p-1">
+                    <Link href={`/vouchers/${v.id}`}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10">
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </Link>
                   </TableCell>
                 </TableRow>
-              ) : (
-                filteredVouchers.map((v, idx) => (
-                  <TableRow 
-                    key={v.id} 
-                    className={idx % 2 === 0 ? "bg-white hover:bg-slate-50" : "bg-[#f8fafc] hover:bg-slate-100"}
-                  >
-                    <TableCell className="border-r border-slate-200 font-medium py-2 text-[11px]">{v.voucherNo}</TableCell>
-                    <TableCell className="border-r border-slate-200 text-[11px]">{v.date}</TableCell>
-                    <TableCell className="border-r border-slate-200 font-bold text-[11px] truncate max-w-[150px]">{v.recipient}</TableCell>
-                    <TableCell className="border-r border-slate-200 text-right font-black text-primary text-[11px]">
-                      {v.amountRO.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="border-r border-slate-200 text-right text-[11px]">
-                      {v.amountBz.toString().padStart(3, '0')}
-                    </TableCell>
-                    <TableCell className="border-r border-slate-200 text-[10px] font-bold uppercase tracking-wider">
-                      {v.paymentMethod}
-                    </TableCell>
-                    <TableCell className="border-r border-slate-200 max-w-[180px] truncate text-[11px]">{v.purpose}</TableCell>
-                    <TableCell className="text-center no-print p-1">
-                      <Link href={`/vouchers/${v.id}`}>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
+              ))
+            )}
+          </TableBody>
+        </Table>
       </div>
 
       {/* Sheet Tabs - Bottom Excel Style */}
