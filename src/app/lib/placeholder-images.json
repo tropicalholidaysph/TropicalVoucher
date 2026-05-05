@@ -3,7 +3,7 @@
     {
       "id": "logo",
       "description": "Tropical Holidays Logo",
-      "imageUrl": "/logo.png",
+      "imageUrl": "logo.png",
       "imageHint": "tropical logo"
     }
   ]

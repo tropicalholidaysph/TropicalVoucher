@@ -69,7 +69,7 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold">Date :</span>
           <div className="border-b border-dashed border-neutral-800 px-4 min-w-[120px] text-center font-mono">
-             {format(new Date(voucher.date), 'dd - MM - yyyy')}
+             {voucher.date ? format(new Date(voucher.date), 'dd - MM - yyyy') : '-- - -- - ----'}
           </div>
           <span className="text-xs font-bold">التاريخ :</span>
         </div>
@@ -122,7 +122,7 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
           <span className="text-sm font-bold whitespace-nowrap">على بنك</span>
           <span className="text-sm font-bold whitespace-nowrap mx-2">Dated</span>
           <div className="w-[150px] border-b border-dotted border-neutral-500 pb-1 text-center font-mono">
-            {voucher.refNo ? format(new Date(voucher.date), 'dd/MM/yyyy') : '................'}
+            {voucher.refNo && voucher.date ? format(new Date(voucher.date), 'dd/MM/yyyy') : '................'}
           </div>
           <span className="text-sm font-bold whitespace-nowrap">بتاريخ</span>
         </div>
