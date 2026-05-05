@@ -164,7 +164,6 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          // Take only first 50 rows as per requirement
           const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }).slice(0, 50) as any[];
           
           if (rawJson.length === 0) continue;
@@ -181,21 +180,17 @@ export function VoucherTable() {
           const vouchersForSheet: any[] = [];
 
           rawJson.forEach((row: any, index: number) => {
-            // Check if row is actually empty (no recipient AND no amount AND no purpose)
             const recipient = row["Paid To"] || row["Recipient"];
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
             const purpose = String(row["Being (Purpose)"] || row["Purpose"] || "").trim();
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"];
 
-            // If the entire row has no significant data, SKIP IT entirely.
             if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) {
               return;
             }
 
-            // Clean the voucher number - if not present, use index but don't force VOID for blank excel rows
             const vNo = vNoRaw ? String(vNoRaw).replace(/\D/g, '').trim() : String(index + 1);
-            
             const isVoid = !recipient || (ro === 0 && bz === 0);
             const totalAmount = ro + (bz / 1000);
             
@@ -272,7 +267,6 @@ export function VoucherTable() {
     XLSX.writeFile(workbook, `${ledgerName}_Export.xlsx`);
   };
 
-  // Strictly Ascending Sort (1 to 50) per requirement
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -282,7 +276,7 @@ export function VoucherTable() {
     .sort((a, b) => {
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
-      if (numA !== numB) return numA - numB; // Ascending
+      if (numA !== numB) return numA - numB;
       return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
 
@@ -319,14 +313,14 @@ export function VoucherTable() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-white shadow-xl overflow-hidden">
-      <div className="p-3 bg-slate-50 border-b flex flex-col sm:flex-row justify-between items-center gap-3 no-print">
+    <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-card text-card-foreground shadow-xl overflow-hidden">
+      <div className="p-3 bg-muted/30 border-b flex flex-col sm:flex-row justify-between items-center gap-3 no-print">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
               placeholder="Search active ledger..." 
-              className="pl-9 h-9 text-xs"
+              className="pl-9 h-9 text-xs bg-background"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               disabled={ledgers.length === 0}
@@ -352,7 +346,7 @@ export function VoucherTable() {
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}
-            className="h-9 text-xs border-primary text-primary hover:bg-primary hover:text-white"
+            className="h-9 text-xs border-primary text-primary hover:bg-primary hover:text-primary-foreground"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
             Import File
@@ -368,7 +362,7 @@ export function VoucherTable() {
             Export Ledger
           </Button>
           <Link href="/vouchers/new">
-            <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90">
+            <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground">
               <Plus className="w-3 h-3" />
               New Entry
             </Button>
@@ -376,7 +370,7 @@ export function VoucherTable() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto relative">
+      <div className="flex-1 overflow-auto relative bg-background">
         {(isImporting || vouchersLoading || ledgersLoading || isBulkDeleting) && (
           <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-primary/20 overflow-hidden">
             <div className="h-full bg-primary animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-primary/20 via-primary to-primary/20" />
@@ -384,38 +378,38 @@ export function VoucherTable() {
         )}
         
         {ledgers.length === 0 && !ledgersLoading ? (
-          <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
+          <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-            <h3 className="text-lg font-bold text-slate-600 mb-1">Spreadsheet Dashboard</h3>
-            <p className="max-w-xs text-sm">Upload your Excel files. The system handles 50 clean rows per sheet sequentially.</p>
+            <h3 className="text-lg font-bold mb-1">Spreadsheet Dashboard</h3>
+            <p className="max-w-xs text-sm opacity-70">Upload your Excel files. The system handles 50 clean rows per sheet sequentially.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
-            <TableHeader className="bg-[#2a4365] sticky top-0 z-10">
+            <TableHeader className="bg-slate-900 dark:bg-slate-950 sticky top-0 z-10">
               <TableRow className="hover:bg-transparent border-none h-10">
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-10 px-2 text-center no-print">
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-10 px-2 text-center no-print">
                   <Checkbox 
                     checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
                     onCheckedChange={toggleSelectAll}
-                    className="border-white data-[state=checked]:bg-white data-[state=checked]:text-[#2a4365]"
+                    className="border-white data-[state=checked]:bg-white data-[state=checked]:text-slate-900"
                   />
                 </TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Voucher No.</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Date</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-48 px-2">Recipient</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2 text-right">Amt (R.O.)</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-16 px-2 text-right">Bz</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-32 px-2">Method</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-64 px-2">Purpose</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Bank</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Ref No</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2">Voucher No.</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2">Date</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-48 px-2">Recipient</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-right">Amt (R.O.)</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-16 px-2 text-right">Bz</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-32 px-2">Method</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-64 px-2">Purpose</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2">Bank</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2">Ref No</TableHead>
                 <TableHead className="text-white font-bold text-[11px] w-24 px-2 text-center no-print">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
+                  <TableCell colSpan={11} className="h-64 text-center text-muted-foreground italic text-xs">
                     No records found. Import a file to get started.
                   </TableCell>
                 </TableRow>
@@ -424,37 +418,38 @@ export function VoucherTable() {
                   <TableRow 
                     key={v.id} 
                     className={cn(
-                      idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100",
-                      v.isVoid && "bg-red-500/90 text-white hover:bg-red-600"
+                      idx % 2 === 0 ? "bg-background" : "bg-muted/20",
+                      v.isVoid && "bg-destructive/80 text-destructive-foreground hover:bg-destructive"
                     )}
                   >
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print">
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-center no-print">
                       <Checkbox 
                         checked={selectedIds.has(v.id)}
                         onCheckedChange={() => toggleSelect(v.id)}
+                        className={v.isVoid ? "border-white" : ""}
                       />
                     </TableCell>
-                    <TableCell className={cn("border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono font-bold", v.isVoid && "text-white")}>
+                    <TableCell className={cn("border-r border-border/50 px-2 py-1.5 text-[11px] font-mono font-bold")}>
                       {v.voucherNo}
                     </TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.isVoid && v.recipient === "VOID / NO DATA" ? "VOID" : v.date}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold">
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px]">{v.isVoid && v.recipient === "VOID / NO DATA" ? "VOID" : v.date}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] font-bold">
                       {v.recipient}
                     </TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-black text-[11px]">{v.isVoid ? "0" : v.amountRO.toLocaleString()}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-mono text-[11px]">{v.isVoid ? "000" : v.amountBz.toString().padStart(3, '0')}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[10px] uppercase font-semibold">{v.paymentMethod}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate italic">{v.bankName || "-"}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-right font-black text-[11px]">{v.isVoid ? "0" : v.amountRO.toLocaleString()}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-right font-mono text-[11px]">{v.isVoid ? "000" : v.amountBz.toString().padStart(3, '0')}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[10px] uppercase font-semibold">{v.paymentMethod}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate italic">{v.bankName || "-"}</TableCell>
+                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
                     <TableCell className="px-2 py-1 flex items-center justify-center gap-1 no-print">
                       <Link href={`/vouchers/${v.id}`}>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:text-white hover:bg-primary">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:bg-primary hover:text-primary-foreground">
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
                       </Link>
                       <Link href={`/vouchers/${v.id}/edit`}>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-500 hover:text-white hover:bg-slate-500">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-muted hover:text-foreground">
                           <Edit2 className="w-3.5 h-3.5" />
                         </Button>
                       </Link>
@@ -467,21 +462,21 @@ export function VoucherTable() {
         )}
       </div>
 
-      <div className="bg-[#f1f5f9] border-t flex items-center px-1 h-9 no-print">
+      <div className="bg-muted/30 border-t flex items-center px-1 h-9 no-print">
         <Tabs value={activeLedgerId} onValueChange={setActiveLedgerId} className="flex-1 overflow-x-auto">
           <TabsList className="bg-transparent h-9 p-0 gap-0">
             {ledgers.map((ledger) => (
               <div key={ledger.id} className="flex items-center group">
                 <TabsTrigger 
                   value={ledger.id}
-                  className="data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:border-t-2 data-[state=active]:border-t-blue-600 h-9 px-4 text-[11px] font-semibold rounded-none border-x border-slate-300 -ml-[1px]"
+                  className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:border-t-2 data-[state=active]:border-t-primary h-9 px-4 text-[11px] font-semibold rounded-none border-x border-border/50 -ml-[1px] transition-none"
                 >
                   {ledger.name}
                 </TabsTrigger>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="h-9 w-5 hover:bg-slate-200 flex items-center justify-center border-r border-slate-300">
-                      <MoreHorizontal className="w-3 h-3 text-slate-400" />
+                    <button className="h-9 w-5 hover:bg-muted flex items-center justify-center border-r border-border/50">
+                      <MoreHorizontal className="w-3 h-3 text-muted-foreground" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="text-xs">
@@ -499,9 +494,9 @@ export function VoucherTable() {
               variant="ghost" 
               size="sm" 
               onClick={() => setIsAddingLedger(true)}
-              className="h-9 px-3 hover:bg-slate-200 rounded-none border-r border-slate-300"
+              className="h-9 px-3 hover:bg-muted rounded-none border-r border-border/50"
             >
-              <Plus className="w-3.5 h-3.5 text-slate-600" />
+              <Plus className="w-3.5 h-3.5 text-muted-foreground" />
             </Button>
           </TabsList>
         </Tabs>
