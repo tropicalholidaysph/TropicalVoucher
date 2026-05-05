@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -24,14 +25,12 @@ import {
   Search, 
   FileUp, 
   Eye, 
-  FileSpreadsheet, 
   Loader2, 
   Plus, 
   MoreHorizontal, 
   Edit2, 
   Trash2, 
 } from "lucide-react";
-import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { 
   bulkImportVouchers, 
@@ -64,7 +63,6 @@ export function VoucherTable() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  // Real-time Ledgers
   const ledgersQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return query(collection(firestore, "ledgers"), orderBy("createdAt", "asc"));
@@ -73,25 +71,24 @@ export function VoucherTable() {
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
 
-  // Auto-select or Auto-create ledger logic
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading) return;
     
-    // If no ledgers exist, create a default one
-    // We add a small delay to ensure the Auth session is fully propagated to Firestore
     if (ledgers.length === 0) {
+      // Small delay to ensure auth state is propagated to security rules
       const timer = setTimeout(() => {
-        createLedger("Sheet1").then(ledger => {
+        createLedger("Sheet1", firestore).then(ledger => {
           setActiveLedgerId(ledger.id);
+        }).catch(err => {
+           console.error("Auto-create ledger failed", err);
         });
-      }, 800);
+      }, 1000);
       return () => clearTimeout(timer);
     } else if (!activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
-  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading]);
+  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
 
-  // Real-time Vouchers for active ledger
   const vouchersQuery = useMemoFirebase(() => {
     if (!firestore || !user || !activeLedgerId) return null;
     return query(
@@ -105,8 +102,8 @@ export function VoucherTable() {
   const vouchers = vouchersData || [];
 
   async function handleAddLedger() {
-    if (!newLedgerName.trim()) return;
-    const ledger = await createLedger(newLedgerName);
+    if (!newLedgerName.trim() || !firestore) return;
+    const ledger = await createLedger(newLedgerName, firestore);
     setActiveLedgerId(ledger.id);
     setNewLedgerName("");
     setIsAddingLedger(false);
@@ -114,7 +111,7 @@ export function VoucherTable() {
   }
 
   async function handleRenameLedger() {
-    if (!editingLedger || !editName.trim()) return;
+    if (!editingLedger || !editName.trim() || !firestore) return;
     await renameLedger(editingLedger.id, editName);
     setEditingLedger(null);
     toast({ title: "Renamed", description: `Sheet updated to "${editName}"` });
@@ -143,7 +140,7 @@ export function VoucherTable() {
     }
 
     setIsImporting(true);
-    toast({ title: "Importing...", description: "Reading spreadsheet data..." });
+    const startingToast = toast({ title: "Import Starting", description: "Processing file data..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -186,9 +183,9 @@ export function VoucherTable() {
         });
 
         await bulkImportVouchers(vouchersToImport);
-        toast({ title: "Import Successful", description: `Added ${vouchersToImport.length} vouchers.` });
+        toast({ title: "Import Complete", description: `Added ${vouchersToImport.length} vouchers to the sheet.` });
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Failed", description: "Invalid file format." });
+        toast({ variant: "destructive", title: "Import Failed", description: "There was an error reading the file." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -205,12 +202,11 @@ export function VoucherTable() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[500px] border rounded-lg bg-white shadow-xl overflow-hidden">
-      {/* Top Toolbar */}
       <div className="p-3 bg-slate-50 border-b flex flex-col sm:flex-row justify-between items-center gap-3 no-print">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input 
-            placeholder="Search within sheet..." 
+            placeholder="Search current sheet..." 
             className="pl-9 h-9 text-xs"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -223,13 +219,13 @@ export function VoucherTable() {
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}
-            className="h-9 text-xs flex items-center gap-2"
+            className="h-9 text-xs flex items-center gap-2 border-[#E66E38] text-[#E66E38] hover:bg-[#E66E38] hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
             Import XLSX
           </Button>
           <Link href="/vouchers/new">
-            <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90 flex items-center gap-2">
+            <Button size="sm" className="h-9 text-xs bg-[#E66E38] hover:bg-[#E66E38]/90 flex items-center gap-2">
               <Plus className="w-3 h-3" />
               Manual Entry
             </Button>
@@ -237,11 +233,10 @@ export function VoucherTable() {
         </div>
       </div>
 
-      {/* Main Excel-style Table */}
       <div className="flex-1 overflow-auto relative">
         {(isImporting || vouchersLoading || ledgersLoading) && (
-          <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden">
-            <div className="h-full bg-primary animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-primary/20 via-primary to-primary/20" />
+          <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-orange-100 overflow-hidden">
+            <div className="h-full bg-[#E66E38] animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-[#E66E38]/20 via-[#E66E38] to-[#E66E38]/20" />
           </div>
         )}
         
@@ -273,7 +268,7 @@ export function VoucherTable() {
                   key={v.id} 
                   className={idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f8fafc] border-b border-slate-100"}
                 >
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-red-600 font-bold">{v.voucherNo}</TableCell>
+                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-[#DB0D3A] font-bold">{v.voucherNo}</TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-800">{v.recipient}</TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] text-right font-black">{v.amountRO.toLocaleString()}</TableCell>
@@ -284,7 +279,7 @@ export function VoucherTable() {
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
                   <TableCell className="px-2 py-1 text-center no-print">
                     <Link href={`/vouchers/${v.id}`}>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:text-primary-foreground hover:bg-primary">
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-[#E66E38] hover:text-white hover:bg-[#E66E38]">
                         <Eye className="w-3.5 h-3.5" />
                       </Button>
                     </Link>
@@ -292,7 +287,6 @@ export function VoucherTable() {
                 </TableRow>
               ))
             )}
-            {/* Fill empty rows to look like a sheet */}
             {!vouchersLoading && Array.from({ length: Math.max(0, 15 - filteredVouchers.length) }).map((_, i) => (
               <TableRow key={`empty-${i}`} className="border-b border-slate-100 hover:bg-transparent">
                 <TableCell className="border-r border-slate-100 h-8" />
@@ -311,7 +305,6 @@ export function VoucherTable() {
         </Table>
       </div>
 
-      {/* Excel-style Bottom Tabs */}
       <div className="bg-[#f1f5f9] border-t flex items-center px-1 h-9 no-print">
         <Tabs value={activeLedgerId} onValueChange={setActiveLedgerId} className="flex-1 overflow-x-auto">
           <TabsList className="bg-transparent h-9 p-0 gap-0">
@@ -355,7 +348,6 @@ export function VoucherTable() {
         </div>
       </div>
 
-      {/* Dialogs */}
       <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader><DialogTitle>New Spreadsheet Sheet</DialogTitle></DialogHeader>

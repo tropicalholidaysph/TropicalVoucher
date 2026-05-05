@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -5,12 +6,18 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, List, LogOut } from "lucide-react";
+import { PlaceHolderImages } from "@/app/lib/placeholder-images";
+import { useAuth } from "@/firebase";
+import { signOut } from "firebase/auth";
 
 export function Navbar() {
   const router = useRouter();
+  const auth = useAuth();
+  const logo = PlaceHolderImages.find(img => img.id === 'logo');
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem("auth");
+    await signOut(auth);
     router.push("/login");
   };
 
@@ -22,14 +29,14 @@ export function Navbar() {
             <Link href="/" className="flex items-center gap-3 group">
               <div className="relative w-12 h-12">
                 <Image 
-                  src="/logo.png" 
+                  src={logo?.imageUrl || "https://picsum.photos/seed/1/400/400"} 
                   alt="Tropical Holidays Logo" 
                   fill
                   className="object-contain"
-                  data-ai-hint="tropical palm"
+                  data-ai-hint={logo?.imageHint || "tropical palm"}
                 />
               </div>
-              <span className="font-headline font-bold text-xl text-foreground hidden sm:block">
+              <span className="font-bold text-xl text-[#E66E38] hidden sm:block">
                 Tropical Holidays
               </span>
             </Link>
@@ -43,12 +50,12 @@ export function Navbar() {
               </Button>
             </Link>
             <Link href="/vouchers/new">
-              <Button size="sm" className="bg-primary hover:bg-primary/90 flex items-center gap-2">
+              <Button size="sm" className="bg-[#E66E38] hover:bg-[#E66E38]/90 text-white flex items-center gap-2">
                 <PlusCircle className="w-4 h-4" />
                 <span className="hidden sm:inline">New Voucher</span>
               </Button>
             </Link>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="border-accent text-accent hover:bg-accent hover:text-white">
+            <Button variant="outline" size="sm" onClick={handleLogout} className="border-[#DB0D3A] text-[#DB0D3A] hover:bg-[#DB0D3A] hover:text-white">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>

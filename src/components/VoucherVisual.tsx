@@ -1,14 +1,18 @@
+
 "use client";
 
 import Image from "next/image";
 import { Voucher } from "@/lib/types";
 import { format } from "date-fns";
+import { PlaceHolderImages } from "@/app/lib/placeholder-images";
 
 interface VoucherVisualProps {
   voucher: Voucher;
 }
 
 export function VoucherVisual({ voucher }: VoucherVisualProps) {
+  const logo = PlaceHolderImages.find(img => img.id === 'logo');
+
   return (
     <div className="w-full max-w-[850px] mx-auto bg-[#FEF9E7] p-6 sm:p-10 border border-neutral-300 shadow-xl font-serif text-[#2c3e50] relative overflow-hidden">
       {/* Decorative inner border */}
@@ -28,15 +32,15 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         <div className="flex flex-col items-center justify-center w-1/3">
           <div className="relative w-24 h-20 mb-2">
             <Image 
-              src="/logo.png" 
+              src={logo?.imageUrl || "https://picsum.photos/seed/1/400/400"} 
               alt="Tropical Holidays Logo" 
               fill
               className="object-contain"
             />
           </div>
           <div className="text-center">
-            <h1 className="text-xl font-bold text-primary tracking-tight">الاستوائية للعطلات</h1>
-            <h1 className="text-lg font-bold text-primary tracking-widest uppercase -mt-1">TROPICAL HOLIDAYS</h1>
+            <h1 className="text-xl font-bold text-[#E66E38] tracking-tight">الاستوائية للعطلات</h1>
+            <h1 className="text-lg font-bold text-[#E66E38] tracking-widest uppercase -mt-1">TROPICAL HOLIDAYS</h1>
             <p className="text-[9px] italic text-muted-foreground">Dream. Explore. Discover.</p>
             <p className="text-[10px] font-mono mt-1">E-mail : info@tropicalholidays.om</p>
           </div>
@@ -55,14 +59,14 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
       {/* Voucher Title and Number */}
       <div className="flex justify-between items-center mb-8 relative z-10 border-t border-b border-[#d4af37]/30 py-4">
         <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-red-600">No.</span>
-          <span className="text-2xl font-black text-red-600 tracking-tighter font-mono">
+          <span className="text-lg font-bold text-[#DB0D3A]">No.</span>
+          <span className="text-2xl font-black text-[#DB0D3A] tracking-tighter font-mono">
             {voucher.voucherNo.replace(/[^0-9]/g, '').padStart(4, '0') || '0000'}
           </span>
         </div>
 
         <div className="text-center">
-          <h2 className="text-2xl font-bold border-b-2 border-primary inline-block px-4 pb-1">سند صرف</h2>
+          <h2 className="text-2xl font-bold border-b-2 border-[#E66E38] inline-block px-4 pb-1">سند صرف</h2>
           <h3 className="text-sm font-bold tracking-widest uppercase mt-1">PAYMENT VOUCHER</h3>
         </div>
 
@@ -77,7 +81,6 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
 
       {/* Main Form Fields */}
       <div className="space-y-6 relative z-10 px-2">
-        {/* Amount Box Section */}
         <div className="flex items-start gap-4">
           <div className="border-2 border-neutral-800 w-[220px]">
             <div className="grid grid-cols-2 text-center border-b border-neutral-800">
@@ -91,16 +94,14 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
           </div>
         </div>
 
-        {/* Paid To */}
         <div className="flex items-end gap-3 w-full">
           <span className="text-sm font-bold whitespace-nowrap">Paid to Mr./M/s.</span>
-          <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 text-xl font-bold italic text-primary">
+          <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 text-xl font-bold italic text-[#E66E38]">
             {voucher.recipient}
           </div>
           <span className="text-sm font-bold whitespace-nowrap">صرفنا إلى الفاضل / الأفاضل</span>
         </div>
 
-        {/* Sum in Words */}
         <div className="flex items-end gap-3 w-full">
           <span className="text-sm font-bold whitespace-nowrap">The sum of Rial Omani</span>
           <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 text-lg italic font-medium">
@@ -109,7 +110,6 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
           <span className="text-sm font-bold whitespace-nowrap">مبلغ وقدره ريال عماني</span>
         </div>
 
-        {/* Payment Method Details */}
         <div className="flex items-end gap-3 w-full">
           <span className="text-sm font-bold whitespace-nowrap">By Cash / Cheque No.</span>
           <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 font-mono">
@@ -118,7 +118,6 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
           <span className="text-sm font-bold whitespace-nowrap">نقداً / شيك رقم</span>
         </div>
 
-        {/* Bank & Date */}
         <div className="flex items-end gap-3 w-full">
           <span className="text-sm font-bold whitespace-nowrap">Bank</span>
           <div className="flex-1 border-b border-dotted border-neutral-500 pb-1 px-4 italic">
@@ -132,7 +131,6 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
           <span className="text-sm font-bold whitespace-nowrap">بتاريخ</span>
         </div>
 
-        {/* Being (Purpose) */}
         <div className="flex items-start gap-3 w-full pt-2">
           <span className="text-sm font-bold whitespace-nowrap mt-1">Being</span>
           <div className="flex-1 border-b border-dotted border-neutral-500 min-h-[60px] px-4 py-1 text-lg leading-tight">
@@ -142,7 +140,6 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         </div>
       </div>
 
-      {/* Signature Section */}
       <div className="grid grid-cols-2 gap-20 mt-16 relative z-10 px-4">
         <div className="flex flex-col gap-1">
           <div className="flex items-end gap-2 w-full">
@@ -160,7 +157,6 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         </div>
       </div>
       
-      {/* Footer Branding Overlay (Very Faint) */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 opacity-[0.03] pointer-events-none select-none">
         <h4 className="text-5xl font-black uppercase whitespace-nowrap">Tropical Holidays</h4>
       </div>

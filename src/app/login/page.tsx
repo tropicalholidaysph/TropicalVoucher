@@ -12,6 +12,7 @@ import { useAuth } from "@/firebase";
 import { signInAnonymously } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { PlaceHolderImages } from "@/app/lib/placeholder-images";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -20,12 +21,13 @@ export default function LoginPage() {
   const auth = useAuth();
   const { toast } = useToast();
 
+  const logo = PlaceHolderImages.find(img => img.id === 'logo');
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password === "tropicalholidays") {
       setIsLoading(true);
       try {
-        // Authenticate with Firebase to satisfy security rules
         await signInAnonymously(auth);
         localStorage.setItem("auth", "true");
         toast({
@@ -53,19 +55,19 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md shadow-xl border-t-4 border-t-primary">
+    <div className="min-h-screen flex items-center justify-center bg-[#F7F3F1] p-4">
+      <Card className="w-full max-w-md shadow-xl border-t-4 border-t-primary bg-white">
         <CardHeader className="text-center">
           <div className="mx-auto w-24 h-24 relative mb-4">
             <Image 
-              src="/logo.png" 
+              src={logo?.imageUrl || "https://picsum.photos/seed/1/400/400"} 
               alt="Tropical Holidays Logo" 
               fill
               className="object-contain"
-              data-ai-hint="tropical palm"
+              data-ai-hint={logo?.imageHint || "tropical palm"}
             />
           </div>
-          <CardTitle className="text-2xl font-headline">Tropical Holidays</CardTitle>
+          <CardTitle className="text-2xl font-black text-[#E66E38]">Tropical Holidays</CardTitle>
           <CardDescription>Authorized Access Only</CardDescription>
         </CardHeader>
         <CardContent>
@@ -80,9 +82,10 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isLoading}
+                className="h-12"
               />
             </div>
-            <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
+            <Button type="submit" className="w-full h-12 bg-[#E66E38] hover:bg-[#E66E38]/90 text-white font-bold" disabled={isLoading}>
               {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</> : "Enter System"}
             </Button>
           </form>

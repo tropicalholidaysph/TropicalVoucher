@@ -1,3 +1,4 @@
+
 'use client';
 
 import { initializeFirebase } from "@/firebase";
@@ -12,10 +13,8 @@ import {
   writeBatch,
   updateDoc,
   deleteDoc,
-  Firestore,
-  serverTimestamp
+  Firestore
 } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { Voucher, Ledger } from "./types";
@@ -34,14 +33,7 @@ export async function getLedgers(): Promise<Ledger[]> {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
 }
 
-export async function createLedger(name: string): Promise<Ledger> {
-  const db = getDb();
-  const auth = getAuth();
-  
-  if (!auth.currentUser) {
-    throw new Error("Cannot create ledger: No authenticated user session found.");
-  }
-
+export async function createLedger(name: string, db: Firestore): Promise<Ledger> {
   const docRef = doc(collection(db, LEDGERS_COLLECTION));
   const ledger = {
     id: docRef.id,
@@ -49,12 +41,13 @@ export async function createLedger(name: string): Promise<Ledger> {
     createdAt: new Date().toISOString()
   };
   
-  setDoc(docRef, ledger).catch(err => {
+  await setDoc(docRef, ledger).catch(err => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
       operation: 'create',
       requestResourceData: ledger
     }));
+    throw err;
   });
   
   return ledger;
@@ -87,10 +80,10 @@ export async function deleteLedger(id: string) {
 
 export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
   const db = getDb();
-  const chunkSize = 450; 
-  const batches = [];
+  const chunkSize = 400; 
   const now = new Date().toISOString();
 
+  // Sequential chunks to avoid overwhelming the write buffer and rules engine
   for (let i = 0; i < vouchers.length; i += chunkSize) {
     const chunk = vouchers.slice(i, i + chunkSize);
     const batch = writeBatch(db);
@@ -103,10 +96,9 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
       });
     });
     
-    batches.push(batch.commit());
+    await batch.commit();
   }
   
-  await Promise.all(batches);
   return { success: true, count: vouchers.length };
 }
 
