@@ -73,7 +73,6 @@ export function VoucherTable() {
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading) return;
     
-    // Auto-create initial sheet if none exist
     if (ledgers.length === 0 && !activeLedgerId && !ledgersLoading) {
       const initializeSheet = async () => {
         try {
@@ -90,12 +89,12 @@ export function VoucherTable() {
   }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
 
   const vouchersQuery = useMemoFirebase(() => {
-    // Extra safety check: Only query if user is authenticated and we have a ledger ID
     if (!firestore || !user || !activeLedgerId || isUserLoading || ledgersLoading) return null;
+    // We remove the server-side orderBy here because combined with the 'where' it requires 
+    // a composite index. We will sort client-side for immediate reliability.
     return query(
       collection(firestore, "vouchers"),
-      where("ledgerId", "==", activeLedgerId),
-      orderBy("createdAt", "desc")
+      where("ledgerId", "==", activeLedgerId)
     );
   }, [firestore, user, activeLedgerId, isUserLoading, ledgersLoading]);
 
@@ -195,11 +194,14 @@ export function VoucherTable() {
     reader.readAsBinaryString(file);
   };
 
-  const filteredVouchers = vouchers.filter((v) => 
-    v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredVouchers = vouchers
+    .filter((v) => 
+      v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    // Sort by date/createdAt descending on the client-side to avoid index requirements
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-white shadow-xl overflow-hidden">
