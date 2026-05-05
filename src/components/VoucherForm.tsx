@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -30,6 +31,7 @@ import { Save, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Ledger } from "@/lib/types";
+import { useFirestore } from "@/firebase";
 
 const formSchema = z.object({
   voucherNo: z.string().min(1, "Voucher number is required"),
@@ -50,6 +52,7 @@ export function VoucherForm() {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const router = useRouter();
   const { toast } = useToast();
+  const db = useFirestore();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -76,7 +79,6 @@ export function VoucherForm() {
         form.setValue("ledgerId", data[0].id);
       }
       
-      // Prevent hydration mismatch by setting dynamic defaults after mount
       const randomNo = `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
       const today = new Date().toISOString().split('T')[0];
       form.setValue("voucherNo", randomNo);
@@ -95,11 +97,10 @@ export function VoucherForm() {
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    // Optimistic navigation for speed
-    const res = createVoucher(values);
+    const res = createVoucher(values, db);
     toast({ 
-      title: "Voucher Saved", 
-      description: "Recording details in the ledger..." 
+      title: "Saving Record", 
+      description: "Entering voucher into your secure ledger..." 
     });
     router.push(`/vouchers/${res.id}`);
   }
@@ -121,7 +122,7 @@ export function VoucherForm() {
                 name="ledgerId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Select Sheet/Ledger</FormLabel>
+                    <FormLabel>Sheet / Ledger</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger><SelectValue placeholder="Select sheet" /></SelectTrigger></FormControl>
                       <SelectContent>
@@ -182,7 +183,7 @@ export function VoucherForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Paid To (Recipient)</FormLabel>
-                  <FormControl><Input placeholder="Enter full name or company" {...field} /></FormControl>
+                  <FormControl><Input placeholder="Recipient name or company" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -230,11 +231,11 @@ export function VoucherForm() {
                 name="sumInWords"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sum of Rial Omani (In Words)</FormLabel>
+                    <FormLabel>Sum in Words</FormLabel>
                     <FormControl>
                       <Textarea 
                         readOnly 
-                        className="bg-muted/30 cursor-not-allowed italic font-medium text-primary h-10" 
+                        className="bg-muted/30 italic font-medium text-primary h-10 min-h-[40px] resize-none" 
                         {...field} 
                       />
                     </FormControl>
@@ -271,14 +272,14 @@ export function VoucherForm() {
               name="purpose"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Being (Purpose of Payment)</FormLabel>
-                  <FormControl><Textarea placeholder="Describe the payment..." className="min-h-[100px]" {...field} /></FormControl>
+                  <FormLabel>Being (Purpose)</FormLabel>
+                  <FormControl><Textarea placeholder="Details of payment..." className="min-h-[80px]" {...field} /></FormControl>
                 </FormItem>
               )}
             />
 
             <Button type="submit" className="w-full h-12 text-lg" disabled={isSubmitting}>
-              {isSubmitting ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Recording...</> : <><Save className="mr-2 h-5 w-5" /> Save and Generate Voucher</>}
+              {isSubmitting ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Recording...</> : <><Save className="mr-2 h-5 w-5" /> Save Voucher</>}
             </Button>
           </form>
         </Form>

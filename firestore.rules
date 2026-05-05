@@ -8,14 +8,8 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Authorization Registry: Marker documents where ID is the UID
-    match /authorizedUsers/{userId} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow write: if false;
-    }
-
     // Support for the specific collection names used in the application logic
+    // We allow read/write for any signed-in user for this MVP
     match /ledgers/{ledgerId} {
       allow read, write: if isSignedIn();
     }
@@ -27,6 +21,13 @@ service cloud.firestore {
     // Legacy support for paymentVouchers path
     match /paymentVouchers/{voucherId} {
       allow read, write: if isSignedIn();
+    }
+
+    // Authorization Registry (Optional for this setup)
+    match /authorizedUsers/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow write: if false;
     }
   }
 }

@@ -15,27 +15,26 @@ export default function Dashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    // Combine local check with Firebase Auth check for robustness
+    // Session check
     const localAuth = typeof window !== 'undefined' ? localStorage.getItem("auth") : null;
     
-    if (!isUserLoading) {
-      if (!user && localAuth !== "true") {
-        router.push("/login");
-      }
+    if (!isUserLoading && !user && localAuth !== "true") {
+      router.push("/login");
     }
   }, [user, isUserLoading, router]);
 
-  if (isUserLoading) {
+  // Show loader while checking auth or if session exists but user isn't yet synced with Firebase
+  if (isUserLoading || (localStorage.getItem("auth") === "true" && !user)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
         <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground font-medium">Synchronizing Ledger...</p>
+        <p className="text-muted-foreground font-medium">Connecting to Secure Ledger...</p>
       </div>
     );
   }
 
-  // Only render if we have a user or are locally "authed" (session persistence)
-  if (!user && (typeof window !== 'undefined' && localStorage.getItem("auth") !== "true")) return null;
+  // Final check to prevent unauthorized render
+  if (!user && localStorage.getItem("auth") !== "true") return null;
 
   return (
     <div className="min-h-screen bg-background">
