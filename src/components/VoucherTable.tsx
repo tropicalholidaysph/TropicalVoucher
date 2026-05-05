@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -259,7 +260,7 @@ export function VoucherTable() {
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    // Set specific column widths for visibility
+    // Optimized Column Widths
     const wscols: any[] = [];
     wscols[0] = { wch: 12 }; // A: Voucher No
     wscols[1] = { wch: 12 }; // B: Date
@@ -271,21 +272,21 @@ export function VoucherTable() {
     wscols[7] = { wch: 20 }; // H: Bank
     wscols[8] = { wch: 15 }; // I: Ref No
     
-    // HIDE ALL COLUMNS from J (index 9) to XFD (maximum column limit 16383)
-    for (let i = 9; i <= 16383; i++) {
+    // HIDE UNUSED COLUMNS (Limited to 100 to keep file size low while still appearing 'infinite')
+    for (let i = 9; i <= 100; i++) {
       wscols[i] = { hidden: true };
     }
     worksheet['!cols'] = wscols;
 
-    // HIDE ALL ROWS from after the data table to the maximum Excel limit (1,048,576)
+    // HIDE UNUSED ROWS (Limited to 2000 to keep file size small and prevent browser crashes)
     const wsrows: any[] = [];
-    // Index starts at 0, data.length gives the row after the last data row
-    for (let i = data.length; i <= 1048575; i++) {
+    const lastDataRow = data.length;
+    for (let i = lastDataRow; i <= 2000; i++) {
       wsrows[i] = { hidden: true };
     }
     worksheet['!rows'] = wsrows;
 
-    // Apply Styles to Header (Orange bg, White text)
+    // Header Styling
     const range = XLSX.utils.decode_range(worksheet['!ref']!);
     for (let C = range.s.c; C <= range.e.c; ++C) {
       const address = XLSX.utils.encode_col(C) + "1";
