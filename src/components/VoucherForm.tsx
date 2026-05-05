@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "navigation";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -76,8 +76,6 @@ export function VoucherForm() {
 
   useEffect(() => {
     async function convert() {
-      // Explicitly convert watched values to numbers to avoid Genkit type validation errors
-      // Form inputs often return strings even if type="number"
       const ro = Number(amountRO) || 0;
       const bz = Number(amountBz) || 0;
 
@@ -200,7 +198,7 @@ export function VoucherForm() {
                     <FormItem>
                       <FormLabel>Amount R.O.</FormLabel>
                       <FormControl>
-                        <Input type="number" step="0.001" placeholder="Rial" {...field} />
+                        <Input type="number" step="1" placeholder="Rial" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
