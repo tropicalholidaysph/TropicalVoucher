@@ -1,5 +1,11 @@
 export type PaymentMethod = 'Cash' | 'Cheque' | 'Bank Transfer';
 
+export interface Ledger {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export interface Voucher {
   id: string;
   voucherNo: string;
@@ -12,5 +18,6 @@ export interface Voucher {
   bankName?: string;
   refNo?: string;
   purpose: string;
+  ledgerId: string;
   createdAt: string;
 }

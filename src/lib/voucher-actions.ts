@@ -9,16 +9,49 @@ import {
   getDoc, 
   query, 
   orderBy, 
+  where,
   Timestamp,
-  writeBatch
+  writeBatch,
+  updateDoc,
+  deleteDoc
 } from "firebase/firestore";
-import { Voucher } from "./types";
+import { Voucher, Ledger } from "./types";
 
 const VOUCHERS_COLLECTION = "vouchers";
+const LEDGERS_COLLECTION = "ledgers";
 
-/**
- * Creates a voucher non-blockingly for instant UI response.
- */
+// --- Ledger Actions ---
+
+export async function getLedgers(): Promise<Ledger[]> {
+  const q = query(collection(db, LEDGERS_COLLECTION), orderBy("createdAt", "asc"));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
+}
+
+export async function createLedger(name: string): Promise<Ledger> {
+  const docRef = doc(collection(db, LEDGERS_COLLECTION));
+  const ledger = {
+    id: docRef.id,
+    name,
+    createdAt: new Date().toISOString()
+  };
+  await setDoc(docRef, ledger);
+  return ledger;
+}
+
+export async function renameLedger(id: string, newName: string) {
+  const docRef = doc(db, LEDGERS_COLLECTION, id);
+  await updateDoc(docRef, { name: newName });
+}
+
+export async function deleteLedger(id: string) {
+  // Note: In a production app, you'd also delete all vouchers in this ledger.
+  // For this MVP, we just delete the ledger record.
+  await deleteDoc(doc(db, LEDGERS_COLLECTION, id));
+}
+
+// --- Voucher Actions ---
+
 export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
   const docRef = doc(collection(db, VOUCHERS_COLLECTION));
   const id = docRef.id;
@@ -27,16 +60,12 @@ export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
     ...voucher,
     createdAt: Timestamp.now().toDate().toISOString(),
   }).catch((error) => {
-    // Silent fail or emit to a global handler
     console.error("Background Firestore write failed:", error);
   });
 
   return { success: true, id };
 }
 
-/**
- * Bulk imports vouchers from an array of data.
- */
 export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
   const batch = writeBatch(db);
   const results: string[] = [];
@@ -54,9 +83,13 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
   return results;
 }
 
-export async function getVouchers(): Promise<Voucher[]> {
+export async function getVouchersByLedger(ledgerId: string): Promise<Voucher[]> {
   try {
-    const q = query(collection(db, VOUCHERS_COLLECTION), orderBy("createdAt", "desc"));
+    const q = query(
+      collection(db, VOUCHERS_COLLECTION), 
+      where("ledgerId", "==", ledgerId),
+      orderBy("createdAt", "desc")
+    );
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({
       id: doc.id,

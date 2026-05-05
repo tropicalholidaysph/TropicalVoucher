@@ -24,11 +24,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { createVoucher } from "@/lib/voucher-actions";
+import { createVoucher, getLedgers } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
 import { Save, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { Ledger } from "@/lib/types";
 
 const formSchema = z.object({
   voucherNo: z.string().min(1, "Voucher number is required"),
@@ -41,10 +42,12 @@ const formSchema = z.object({
   bankName: z.string().optional(),
   refNo: z.string().optional(),
   purpose: z.string().min(2, "Purpose is required"),
+  ledgerId: z.string().min(1, "Ledger selection is required"),
 });
 
 export function VoucherForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -61,42 +64,38 @@ export function VoucherForm() {
       bankName: "",
       refNo: "",
       purpose: "",
+      ledgerId: "",
     },
   });
 
-  // Handle initialization on client to avoid hydration mismatch
   useEffect(() => {
-    const randomNo = `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-    const today = new Date().toISOString().split('T')[0];
-    
-    form.setValue("voucherNo", randomNo);
-    form.setValue("date", today);
+    async function load() {
+      const data = await getLedgers();
+      setLedgers(data);
+      if (data.length > 0) {
+        form.setValue("ledgerId", data[0].id);
+      }
+      
+      const randomNo = `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+      const today = new Date().toISOString().split('T')[0];
+      form.setValue("voucherNo", randomNo);
+      form.setValue("date", today);
+    }
+    load();
   }, [form]);
 
   const amountRO = form.watch("amountRO");
   const amountBz = form.watch("amountBz");
 
-  // Local automatic conversion (Fast and No-AI)
   useEffect(() => {
-    const ro = Number(amountRO) || 0;
-    const bz = Number(amountBz) || 0;
-    const totalAmount = ro + (bz / 1000);
-    const result = convertAmountToWords(totalAmount);
-    form.setValue("sumInWords", result);
+    const totalAmount = (Number(amountRO) || 0) + ((Number(amountBz) || 0) / 1000);
+    form.setValue("sumInWords", convertAmountToWords(totalAmount));
   }, [amountRO, amountBz, form]);
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    
-    // Non-blocking creation for instant feedback
     const res = createVoucher(values);
-    
-    toast({
-      title: "Voucher Recorded",
-      description: "Moving to ledger view...",
-    });
-    
-    // Immediate navigation to the new voucher page
+    toast({ title: "Voucher Recorded", description: "Navigating to view..." });
     router.push(`/vouchers/${res.id}`);
   }
 
@@ -111,16 +110,32 @@ export function VoucherForm() {
       <CardContent className="pt-6">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <FormField
+                control={form.control}
+                name="ledgerId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Select Sheet/Ledger</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select sheet" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {ledgers.map(l => (
+                          <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="voucherNo"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Voucher No.</FormLabel>
-                    <FormControl>
-                      <Input placeholder="V-0000" {...field} />
-                    </FormControl>
+                    <FormControl><Input placeholder="V-0000" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -131,9 +146,7 @@ export function VoucherForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
+                    <FormControl><Input type="date" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -145,11 +158,7 @@ export function VoucherForm() {
                   <FormItem>
                     <FormLabel>Payment Method</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select method" />
-                        </SelectTrigger>
-                      </FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select method" /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="Cash">Cash</SelectItem>
                         <SelectItem value="Cheque">Cheque</SelectItem>
@@ -168,9 +177,7 @@ export function VoucherForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Paid To (Recipient)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter full name or company" {...field} />
-                  </FormControl>
+                  <FormControl><Input placeholder="Enter full name or company" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -187,13 +194,11 @@ export function VoucherForm() {
                       <FormControl>
                         <Input 
                           type="number" 
-                          placeholder="Rial" 
                           {...field} 
                           onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                           onFocus={(e) => e.target.value === "0" && (e.target.value = "")}
                         />
                       </FormControl>
-                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -206,13 +211,11 @@ export function VoucherForm() {
                       <FormControl>
                         <Input 
                           type="number" 
-                          placeholder="Baisa" 
                           {...field} 
                           onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                           onFocus={(e) => e.target.value === "0" && (e.target.value = "")}
                         />
                       </FormControl>
-                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -224,13 +227,8 @@ export function VoucherForm() {
                   <FormItem>
                     <FormLabel>Sum of Rial Omani (In Words)</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        readOnly
-                        className="bg-muted/30 cursor-not-allowed font-medium italic text-primary" 
-                        {...field} 
-                      />
+                      <Textarea readOnly className="bg-muted/30 cursor-not-allowed italic font-medium text-primary h-10" {...field} />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -243,10 +241,7 @@ export function VoucherForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Bank Name (Optional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Bank Muscat" {...field} />
-                    </FormControl>
-                    <FormMessage />
+                    <FormControl><Input placeholder="e.g. Bank Muscat" {...field} /></FormControl>
                   </FormItem>
                 )}
               />
@@ -256,10 +251,7 @@ export function VoucherForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Reference / Cheque No.</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Ref #" {...field} />
-                    </FormControl>
-                    <FormMessage />
+                    <FormControl><Input placeholder="Ref #" {...field} /></FormControl>
                   </FormItem>
                 )}
               />
@@ -271,34 +263,13 @@ export function VoucherForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Being (Purpose of Payment)</FormLabel>
-                  <FormControl>
-                    <Textarea 
-                      placeholder="Describe what the payment is for..." 
-                      className="min-h-[100px]" 
-                      {...field} 
-                    />
-                  </FormControl>
-                  <FormMessage />
+                  <FormControl><Textarea placeholder="Describe the payment..." className="min-h-[100px]" {...field} /></FormControl>
                 </FormItem>
               )}
             />
 
-            <Button 
-              type="submit" 
-              className="w-full h-12 text-lg bg-primary hover:bg-primary/90 shadow-lg"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Generating Voucher...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-5 w-5" />
-                  Save and Generate Voucher
-                </>
-              )}
+            <Button type="submit" className="w-full h-12 text-lg" disabled={isSubmitting}>
+              {isSubmitting ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Recording...</> : <><Save className="mr-2 h-5 w-5" /> Save and Generate Voucher</>}
             </Button>
           </form>
         </Form>
