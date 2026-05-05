@@ -78,13 +78,8 @@ function parseExcelDate(val: any): string {
     let m = parseInt(parts[1]) - 1; 
     let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
 
-    if (d > 12) {
-      const manualDate = new Date(y, m, d);
-      if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
-    } else {
-      const manualDate = new Date(y, m, d);
-      if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
-    }
+    const manualDate = new Date(y, m, d);
+    if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
   }
 
   return new Date().toISOString().split('T')[0];
@@ -163,7 +158,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Reading File", description: "Determining sheet count..." });
+    toast({ title: "Reading File", description: "Mapping data entries..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -177,8 +172,15 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          const json = XLSX.utils.sheet_to_json(worksheet) as any[];
+          const rawJson = XLSX.utils.sheet_to_json(worksheet) as any[];
           
+          // Filter out rows that don't have core identifying data (like Sl No or Recipient)
+          const json = rawJson.filter(row => {
+            const hasId = !!(row["Voucher No"] || row["Sl No"] || row["No"] || row["Serial"]);
+            const hasRecipient = !!(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"]);
+            return hasId || hasRecipient;
+          });
+
           if (json.length === 0) continue;
 
           let targetLedgerId = existingLedgerMap.get(sheetName.trim().toLowerCase());
@@ -200,7 +202,7 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
-            const vNo = row["Voucher No"] || row["Voucher No."] || row["Sl No"] || row["SL NO"] || row["No"] || row["#"] || row["Serial No"];
+            const vNo = row["Sl No"] || row["Voucher No"] || row["Voucher No."] || row["Serial No"] || row["No"] || row["#"] || row["Serial"];
 
             return {
               voucherNo: String(vNo || "V-" + Math.floor(Math.random()*10000)),
@@ -223,7 +225,7 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Import Complete", description: `Synced ${totalImportedCount} entries across ${workbook.SheetNames.length} sheets.` });
+        toast({ title: "Import Complete", description: `Synced ${totalImportedCount} entries successfully.` });
       } catch (error) {
         console.error("Import error:", error);
         toast({ variant: "destructive", title: "Format Error", description: "Excel file could not be parsed." });
@@ -242,12 +244,10 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // Sort by date descending
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       if (dateB !== dateA) return dateB - dateA;
       
-      // Secondary sort: numeric voucher number extraction
       const numA = parseInt(a.voucherNo.replace(/\D/g, '')) || 0;
       const numB = parseInt(b.voucherNo.replace(/\D/g, '')) || 0;
       return numB - numA;
@@ -343,8 +343,8 @@ export function VoucherTable() {
         {ledgers.length === 0 && !ledgersLoading ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-            <h3 className="text-lg font-bold text-slate-600 mb-1">No Data Detected</h3>
-            <p className="max-w-xs text-sm">Import an Excel file to see your records and sheets here.</p>
+            <h3 className="text-lg font-bold text-slate-600 mb-1">Secure Dashboard</h3>
+            <p className="max-w-xs text-sm">Import your financial ledger file to begin visualizing and managing vouchers.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -373,7 +373,7 @@ export function VoucherTable() {
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
-                    No matching records found.
+                    No matching records found in this sheet.
                   </TableCell>
                 </TableRow>
               ) : (
