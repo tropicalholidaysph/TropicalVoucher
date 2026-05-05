@@ -232,13 +232,15 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
+      // Ascending Sort by Date
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
-      if (dateB !== dateA) return dateB - dateA;
+      if (dateA !== dateB) return dateA - dateB;
       
+      // Secondary Ascending Sort by Numeric Voucher No
       const numA = parseInt(a.voucherNo.replace(/\D/g, '')) || 0;
       const numB = parseInt(b.voucherNo.replace(/\D/g, '')) || 0;
-      return numB - numA;
+      return numA - numB;
     });
 
   const toggleSelectAll = () => {
