@@ -31,8 +31,7 @@ import {
   Edit2, 
   Trash2,
   Trash,
-  CheckSquare,
-  Square
+  AlertCircle
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { 
@@ -100,7 +99,6 @@ export function VoucherTable() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   
-  const initRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -112,27 +110,12 @@ export function VoucherTable() {
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
 
+  // Automatically select the first ledger if none is active
   useEffect(() => {
-    if (isUserLoading || !user || ledgersLoading || initRef.current) return;
-    
-    if (ledgers.length > 0) {
-      if (!activeLedgerId) {
-        setActiveLedgerId(ledgers[0].id);
-      }
-      return;
+    if (ledgers.length > 0 && !activeLedgerId) {
+      setActiveLedgerId(ledgers[0].id);
     }
-
-    initRef.current = true;
-    const initializeSheet = async () => {
-      try {
-        const ledger = await createLedger("Sheet1", firestore);
-        setActiveLedgerId(ledger.id);
-      } catch (e) {
-        initRef.current = false;
-      }
-    };
-    initializeSheet();
-  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
+  }, [ledgers, activeLedgerId]);
 
   const vouchersQuery = useMemoFirebase(() => {
     if (!firestore || !user || !activeLedgerId || isUserLoading || ledgersLoading) return null;
@@ -167,14 +150,10 @@ export function VoucherTable() {
   }
 
   async function handleDeleteLedger(id: string) {
-    if (ledgers.length <= 1) {
-      toast({ variant: "destructive", title: "Cannot Delete", description: "You must have at least one sheet." });
-      return;
-    }
     await deleteLedger(id);
     if (activeLedgerId === id) {
       const nextLedger = ledgers.find(l => l.id !== id);
-      if (nextLedger) setActiveLedgerId(nextLedger.id);
+      setActiveLedgerId(nextLedger?.id || "");
     }
     toast({ title: "Deleted", description: "Sheet has been removed." });
   }
@@ -184,7 +163,7 @@ export function VoucherTable() {
     if (!file || !firestore) return;
 
     setIsImporting(true);
-    toast({ title: "Importing File", description: "Reading all sheets from your file..." });
+    toast({ title: "Importing File", description: "Processing your sheets..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -208,6 +187,8 @@ export function VoucherTable() {
             const newLedger = await createLedger(sheetName, firestore);
             targetLedgerId = newLedger.id;
             existingLedgerMap.set(sheetName.toLowerCase(), targetLedgerId);
+            // Auto select the first newly created ledger if nothing is active
+            if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
           }
 
           const vouchersForSheet = json.map((row: any) => {
@@ -220,7 +201,8 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
-            const vNo = row["Voucher No"] || row["Voucher No."] || row["Voucher #"] || row["No"] || row["Sl No"] || row["#"];
+            // Map Voucher Number properly (Sl No is common in vouchers)
+            const vNo = row["Voucher No"] || row["Voucher No."] || row["Sl No"] || row["SL NO"] || row["No"] || row["#"] || row["Serial No"];
 
             return {
               voucherNo: String(vNo || "V-" + Math.floor(Math.random()*10000)),
@@ -243,9 +225,10 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Success", description: `Imported ${totalImportedCount} records across detected sheets.` });
+        toast({ title: "Import Complete", description: `Processed ${totalImportedCount} vouchers across ${workbook.SheetNames.length} sheets.` });
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Error", description: "Failed to process the spreadsheet." });
+        console.error("Import error:", error);
+        toast({ variant: "destructive", title: "Import Error", description: "Could not process Excel file." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -260,7 +243,7 @@ export function VoucherTable() {
       v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredVouchers.length && filteredVouchers.length > 0) {
@@ -283,14 +266,12 @@ export function VoucherTable() {
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     setIsBulkDeleting(true);
-    toast({ title: "Deleting Records", description: `Removing ${selectedIds.size} vouchers...` });
-    
     try {
       await bulkDeleteVouchers(Array.from(selectedIds));
       setSelectedIds(new Set());
-      toast({ title: "Deleted Successfully", description: "Records have been removed from the ledger." });
+      toast({ title: "Records Deleted" });
     } catch (e) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to delete records." });
+      toast({ variant: "destructive", title: "Deletion Failed" });
     } finally {
       setIsBulkDeleting(false);
     }
@@ -303,26 +284,24 @@ export function VoucherTable() {
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Search current sheet..." 
+              placeholder="Search active sheet..." 
               className="pl-9 h-9 text-xs"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              disabled={ledgers.length === 0}
             />
           </div>
           {selectedIds.size > 0 && (
-            <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20 animate-in fade-in slide-in-from-left-2 duration-300">
-              <span className="text-[11px] font-bold text-primary">{selectedIds.size} selected</span>
-              <Button 
-                variant="destructive" 
-                size="sm" 
-                className="h-7 px-2 text-[10px]"
-                onClick={handleBulkDelete}
-                disabled={isBulkDeleting}
-              >
-                {isBulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash className="w-3 h-3 mr-1" />}
-                Delete Selected
-              </Button>
-            </div>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              className="h-8 text-[11px]"
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+            >
+              <Trash className="w-3 h-3 mr-1" />
+              Delete {selectedIds.size}
+            </Button>
           )}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
@@ -335,12 +314,12 @@ export function VoucherTable() {
             className="h-9 text-xs flex items-center gap-2 border-[#E66E38] text-[#E66E38] hover:bg-[#E66E38] hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import Spreadsheet (All Sheets)
+            Import Ledger File
           </Button>
           <Link href="/vouchers/new">
             <Button size="sm" className="h-9 text-xs bg-[#E66E38] hover:bg-[#E66E38]/90 flex items-center gap-2">
               <Plus className="w-3 h-3" />
-              Manual Entry
+              New Record
             </Button>
           </Link>
         </div>
@@ -353,69 +332,76 @@ export function VoucherTable() {
           </div>
         )}
         
-        <Table className="border-collapse table-fixed w-full">
-          <TableHeader className="bg-[#2a4365] sticky top-0 z-10">
-            <TableRow className="hover:bg-transparent border-none h-10">
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-10 px-2 text-center no-print">
-                <Checkbox 
-                  checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
-                  onCheckedChange={toggleSelectAll}
-                  className="border-white data-[state=checked]:bg-white data-[state=checked]:text-[#2a4365]"
-                />
-              </TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-20 px-2">Voucher No.</TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Date</TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-48 px-2">Paid To</TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2 text-right">Amt (R.O.)</TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-16 px-2 text-right">Bz</TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-32 px-2">Method</TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-64 px-2">Purpose</TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Bank</TableHead>
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Ref No</TableHead>
-              <TableHead className="text-white font-bold text-[11px] w-12 px-2 text-center no-print">View</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredVouchers.length === 0 && !vouchersLoading && !ledgersLoading ? (
-              <TableRow>
-                <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
-                  {searchTerm ? "No matching records found." : "This sheet is ready for data entry."}
-                </TableCell>
+        {ledgers.length === 0 && !ledgersLoading ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
+            <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
+            <h3 className="text-lg font-bold text-slate-600 mb-1">No Sheets Found</h3>
+            <p className="max-w-xs text-sm">Please import an Excel file or create a manual sheet to start managing vouchers.</p>
+          </div>
+        ) : (
+          <Table className="border-collapse table-fixed w-full">
+            <TableHeader className="bg-[#2a4365] sticky top-0 z-10">
+              <TableRow className="hover:bg-transparent border-none h-10">
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-10 px-2 text-center no-print">
+                  <Checkbox 
+                    checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
+                    onCheckedChange={toggleSelectAll}
+                    className="border-white data-[state=checked]:bg-white data-[state=checked]:text-[#2a4365]"
+                  />
+                </TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Voucher No.</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Date</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-48 px-2">Recipient</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2 text-right">Amt (R.O.)</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-16 px-2 text-right">Bz</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-32 px-2">Method</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-64 px-2">Purpose</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Bank</TableHead>
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Ref No</TableHead>
+                <TableHead className="text-white font-bold text-[11px] w-12 px-2 text-center no-print">View</TableHead>
               </TableRow>
-            ) : (
-              filteredVouchers.map((v, idx) => (
-                <TableRow 
-                  key={v.id} 
-                  className={idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100"}
-                  onClick={() => toggleSelect(v.id)}
-                >
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox 
-                      checked={selectedIds.has(v.id)}
-                      onCheckedChange={() => toggleSelect(v.id)}
-                    />
-                  </TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-[#DB0D3A] font-bold">{v.voucherNo}</TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-800">{v.recipient}</TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] text-right font-black">{v.amountRO.toLocaleString()}</TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] text-right font-mono">{v.amountBz.toString().padStart(3, '0')}</TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[10px] uppercase font-semibold text-slate-500">{v.paymentMethod}</TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate text-slate-500 italic">{v.bankName || "-"}</TableCell>
-                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
-                  <TableCell className="px-2 py-1 text-center no-print" onClick={(e) => e.stopPropagation()}>
-                    <Link href={`/vouchers/${v.id}`}>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-[#E66E38] hover:text-white hover:bg-[#E66E38]">
-                        <Eye className="w-3.5 h-3.5" />
-                      </Button>
-                    </Link>
+            </TableHeader>
+            <TableBody>
+              {filteredVouchers.length === 0 && !vouchersLoading ? (
+                <TableRow>
+                  <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
+                    No records found in this sheet.
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                filteredVouchers.map((v, idx) => (
+                  <TableRow 
+                    key={v.id} 
+                    className={idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100"}
+                  >
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print">
+                      <Checkbox 
+                        checked={selectedIds.has(v.id)}
+                        onCheckedChange={() => toggleSelect(v.id)}
+                      />
+                    </TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-[#DB0D3A] font-bold">{v.voucherNo}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-800">{v.recipient}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] text-right font-black">{v.amountRO.toLocaleString()}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] text-right font-mono">{v.amountBz.toString().padStart(3, '0')}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[10px] uppercase font-semibold text-slate-500">{v.paymentMethod}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate text-slate-500 italic">{v.bankName || "-"}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
+                    <TableCell className="px-2 py-1 text-center no-print">
+                      <Link href={`/vouchers/${v.id}`}>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-[#E66E38] hover:text-white hover:bg-[#E66E38]">
+                          <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
       </div>
 
       <div className="bg-[#f1f5f9] border-t flex items-center px-1 h-9 no-print">
@@ -456,9 +442,6 @@ export function VoucherTable() {
             </Button>
           </TabsList>
         </Tabs>
-        <div className="px-4 text-[10px] text-slate-400 font-medium">
-          {filteredVouchers.length} Records {selectedIds.size > 0 && `(${selectedIds.size} selected)`}
-        </div>
       </div>
 
       <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
@@ -466,7 +449,7 @@ export function VoucherTable() {
           <DialogHeader><DialogTitle>New Sheet</DialogTitle></DialogHeader>
           <div className="py-4">
             <Input 
-              placeholder="Sheet Name (e.g. Sales)" 
+              placeholder="Sheet Name" 
               value={newLedgerName} 
               onChange={(e) => setNewLedgerName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddLedger()}
