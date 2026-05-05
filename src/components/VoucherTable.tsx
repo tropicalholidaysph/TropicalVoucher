@@ -62,7 +62,6 @@ export function VoucherTable() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  // Ensure we wait for user stability before running queries
   const ledgersQuery = useMemoFirebase(() => {
     if (!firestore || !user || isUserLoading) return null;
     return query(collection(firestore, "ledgers"), orderBy("createdAt", "asc"));
@@ -74,14 +73,13 @@ export function VoucherTable() {
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading) return;
     
-    // Auto-initialize Sheet1 only if we are truly authenticated and ledgers are empty
     if (ledgers.length === 0 && !activeLedgerId && !ledgersLoading) {
       const initializeSheet = async () => {
         try {
           const ledger = await createLedger("Sheet1", firestore);
           setActiveLedgerId(ledger.id);
         } catch (e) {
-          console.error("Failed to initialize sheet:", e);
+          // Errors are handled by the permission error emitter
         }
       };
       initializeSheet();

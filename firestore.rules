@@ -1,11 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Universal access for any authenticated user (including anonymous)
+    // Explicitly allow access to the vouchers collection and documents
+    match /vouchers/{voucherId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Explicitly allow access to the ledgers collection and documents
+    match /ledgers/{ledgerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Universal fallback for any authenticated user (including anonymous)
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
     
-    // Deployment trigger version: v2.1.0 - Force rule propagation
+    // Deployment trigger version: v3.0.0 - Critical rule propagation for anonymous ledger access
   }
 }
