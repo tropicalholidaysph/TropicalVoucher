@@ -49,13 +49,27 @@ export function VoucherForm() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      voucherNo: `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
-      date: new Date().toISOString().split('T')[0],
-      paymentMethod: 'Cash',
+      voucherNo: "",
+      date: "",
+      recipient: "",
+      amountRO: 0,
       amountBz: 0,
       sumInWords: "",
+      paymentMethod: 'Cash',
+      bankName: "",
+      refNo: "",
+      purpose: "",
     },
   });
+
+  // Set initial dynamic values after hydration to avoid mismatch
+  useEffect(() => {
+    const randomNo = `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+    const today = new Date().toISOString().split('T')[0];
+    
+    form.setValue("voucherNo", randomNo);
+    form.setValue("date", today);
+  }, [form]);
 
   const amountRO = form.watch("amountRO");
   const amountBz = form.watch("amountBz");
@@ -140,7 +154,7 @@ export function VoucherForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Payment Method</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select method" />
