@@ -73,13 +73,14 @@ export function VoucherTable() {
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading) return;
     
+    // Auto-create initial sheet if none exist
     if (ledgers.length === 0 && !activeLedgerId && !ledgersLoading) {
       const initializeSheet = async () => {
         try {
           const ledger = await createLedger("Sheet1", firestore);
           setActiveLedgerId(ledger.id);
         } catch (e) {
-          // Errors are handled by the permission error emitter
+          // Handled by global listener
         }
       };
       initializeSheet();
@@ -89,13 +90,14 @@ export function VoucherTable() {
   }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
 
   const vouchersQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !activeLedgerId || isUserLoading) return null;
+    // Extra safety check: Only query if user is authenticated and we have a ledger ID
+    if (!firestore || !user || !activeLedgerId || isUserLoading || ledgersLoading) return null;
     return query(
       collection(firestore, "vouchers"),
       where("ledgerId", "==", activeLedgerId),
       orderBy("createdAt", "desc")
     );
-  }, [firestore, user, activeLedgerId, isUserLoading]);
+  }, [firestore, user, activeLedgerId, isUserLoading, ledgersLoading]);
 
   const { data: vouchersData, isLoading: vouchersLoading } = useCollection<Voucher>(vouchersQuery);
   const vouchers = vouchersData || [];
