@@ -24,6 +24,7 @@ import { Voucher, PaymentMethod, Ledger } from "@/lib/types";
 import { 
   Search, 
   FileUp, 
+  FileDown,
   Eye, 
   Loader2, 
   Plus, 
@@ -148,7 +149,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing Ledger", description: "Syncing exactly 50 rows per sheet..." });
+    toast({ title: "Importing Ledger", description: "Processing first 50 rows per sheet..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -162,6 +163,7 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
+          // Strictly take the first 50 rows
           const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }).slice(0, 50) as any[];
           
           if (rawJson.length === 0) continue;
@@ -183,6 +185,7 @@ export function VoucherTable() {
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
             
+            // Mark as void if critical data is missing
             const isVoid = !recipient || (!ro && !bz);
 
             const totalAmount = ro + (bz / 1000);
@@ -225,6 +228,28 @@ export function VoucherTable() {
     reader.readAsBinaryString(file);
   };
 
+  const handleExport = () => {
+    if (filteredVouchers.length === 0) return;
+    
+    const exportData = filteredVouchers.map(v => ({
+      "Voucher No": v.voucherNo,
+      "Date": v.date,
+      "Paid To": v.recipient,
+      "Amount (R.O.)": v.amountRO,
+      "Amount (Bz)": v.amountBz,
+      "Payment Method": v.paymentMethod,
+      "Being (Purpose)": v.purpose,
+      "Bank": v.bankName || "",
+      "Cheque/Ref No": v.refNo || ""
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Ledger");
+    const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
+    XLSX.writeFile(workbook, `${ledgerName}_Export.xlsx`);
+  };
+
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -234,7 +259,9 @@ export function VoucherTable() {
     .sort((a, b) => {
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
-      return numA - numB;
+      // Sort in Ascending Order (1-50)
+      if (numA !== numB) return numA - numB;
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
 
   const toggleSelectAll = () => {
@@ -306,7 +333,17 @@ export function VoucherTable() {
             className="h-9 text-xs border-primary text-primary hover:bg-primary hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import Ledger File
+            Import File
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleExport}
+            disabled={filteredVouchers.length === 0}
+            className="h-9 text-xs border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+          >
+            <FileDown className="w-3 h-3" />
+            Export Ledger
           </Button>
           <Link href="/vouchers/new">
             <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90">
@@ -328,7 +365,7 @@ export function VoucherTable() {
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="text-lg font-bold text-slate-600 mb-1">Spreadsheet Dashboard</h3>
-            <p className="max-w-xs text-sm">Synchronize your Excel records. The system strictly processes the first 50 rows per sheet.</p>
+            <p className="max-w-xs text-sm">Upload your Excel files. The system handles 50 rows per sheet sequentially.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -357,7 +394,7 @@ export function VoucherTable() {
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
-                    No sequential records found in this ledger.
+                    No records in this ledger.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -366,7 +403,7 @@ export function VoucherTable() {
                     key={v.id} 
                     className={cn(
                       idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100",
-                      v.isVoid && "bg-red-500 text-white font-black hover:bg-red-600"
+                      v.isVoid && "bg-red-500/90 text-white hover:bg-red-600"
                     )}
                   >
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print">
@@ -375,15 +412,15 @@ export function VoucherTable() {
                         onCheckedChange={() => toggleSelect(v.id)}
                       />
                     </TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono font-bold">
+                    <TableCell className={cn("border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono font-bold", v.isVoid && "text-white")}>
                       {v.voucherNo}
                     </TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.isVoid ? "VOID" : v.date}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold">
                       {v.recipient}
                     </TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-mono text-[11px]">{v.amountBz.toString().padStart(3, '0')}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-black text-[11px]">{v.isVoid ? "0" : v.amountRO.toLocaleString()}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-mono text-[11px]">{v.isVoid ? "000" : v.amountBz.toString().padStart(3, '0')}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[10px] uppercase font-semibold">{v.paymentMethod}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate italic">{v.bankName || "-"}</TableCell>
