@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef } from "react";
@@ -55,7 +54,6 @@ export function VoucherTable({ vouchers }: VoucherTableProps) {
         const json = XLSX.utils.sheet_to_json(worksheet) as any[];
 
         const vouchersToImport = json.map((row: any) => {
-          // Map Excel columns to Voucher object
           const ro = Number(row["Amount (R.O.)"]) || 0;
           const bz = Number(row["Amount (Bz)"]) || 0;
           const totalAmount = ro + (bz / 1000);
@@ -86,7 +84,7 @@ export function VoucherTable({ vouchers }: VoucherTableProps) {
         });
         
         router.refresh();
-        window.location.reload(); // Refresh to show new data
+        window.location.reload(); 
       } catch (error) {
         console.error("Import error:", error);
         toast({

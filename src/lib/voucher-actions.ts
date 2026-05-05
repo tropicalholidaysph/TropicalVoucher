@@ -1,3 +1,4 @@
+'use client';
 
 import { db } from "./firebase";
 import { 
@@ -12,7 +13,6 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { Voucher } from "./types";
-import { convertAmountToWords } from "./amount-utils";
 
 const VOUCHERS_COLLECTION = "vouchers";
 
@@ -27,6 +27,7 @@ export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
     ...voucher,
     createdAt: Timestamp.now().toDate().toISOString(),
   }).catch((error) => {
+    // Silent fail or emit to a global handler
     console.error("Background Firestore write failed:", error);
   });
 
