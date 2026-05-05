@@ -72,18 +72,14 @@ export function VoucherTable() {
   const ledgers = ledgersData || [];
 
   useEffect(() => {
+    // Critical: Only attempt to create a ledger if we are definitely logged in and done loading
     if (isUserLoading || !user || ledgersLoading) return;
     
     if (ledgers.length === 0) {
-      // Small delay to ensure auth state is propagated to security rules
-      const timer = setTimeout(() => {
-        createLedger("Sheet1", firestore).then(ledger => {
-          setActiveLedgerId(ledger.id);
-        }).catch(err => {
-           console.error("Auto-create ledger failed", err);
-        });
-      }, 1000);
-      return () => clearTimeout(timer);
+      // Create first sheet if none exists
+      createLedger("Sheet1", firestore).then(ledger => {
+        setActiveLedgerId(ledger.id);
+      });
     } else if (!activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
@@ -140,7 +136,7 @@ export function VoucherTable() {
     }
 
     setIsImporting(true);
-    const startingToast = toast({ title: "Import Starting", description: "Processing file data..." });
+    toast({ title: "Importing...", description: "Reading your XLSX file." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -168,7 +164,7 @@ export function VoucherTable() {
           if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
           return {
-            voucherNo: String(row["Voucher No"] || row["No"] || ""),
+            voucherNo: String(row["Voucher No"] || row["No"] || "V-" + Math.floor(Math.random()*1000)),
             date: row["Date"] ? new Date(row["Date"]).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             recipient: String(row["Paid To"] || row["Recipient"] || "N/A"),
             amountRO: ro,
@@ -183,9 +179,9 @@ export function VoucherTable() {
         });
 
         await bulkImportVouchers(vouchersToImport);
-        toast({ title: "Import Complete", description: `Added ${vouchersToImport.length} vouchers to the sheet.` });
+        toast({ title: "Import Complete", description: `Success! ${vouchersToImport.length} vouchers imported.` });
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Failed", description: "There was an error reading the file." });
+        toast({ variant: "destructive", title: "Import Failed", description: "Error processing Excel data." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";

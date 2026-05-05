@@ -6,14 +6,12 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, List, LogOut } from "lucide-react";
-import { PlaceHolderImages } from "@/app/lib/placeholder-images";
 import { useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
 
 export function Navbar() {
   const router = useRouter();
   const auth = useAuth();
-  const logo = PlaceHolderImages.find(img => img.id === 'logo');
 
   const handleLogout = async () => {
     localStorage.removeItem("auth");
@@ -29,11 +27,11 @@ export function Navbar() {
             <Link href="/" className="flex items-center gap-3 group">
               <div className="relative w-12 h-12">
                 <Image 
-                  src={logo?.imageUrl || "https://picsum.photos/seed/1/400/400"} 
+                  src="/logo.png" 
                   alt="Tropical Holidays Logo" 
                   fill
                   className="object-contain"
-                  data-ai-hint={logo?.imageHint || "tropical palm"}
+                  priority
                 />
               </div>
               <span className="font-bold text-xl text-[#E66E38] hidden sm:block">

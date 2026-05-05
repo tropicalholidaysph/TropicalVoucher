@@ -41,13 +41,13 @@ export async function createLedger(name: string, db: Firestore): Promise<Ledger>
     createdAt: new Date().toISOString()
   };
   
-  await setDoc(docRef, ledger).catch(err => {
+  // No await here per guidelines, but return the object for UI state
+  setDoc(docRef, ledger).catch(err => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
       operation: 'create',
       requestResourceData: ledger
     }));
-    throw err;
   });
   
   return ledger;
@@ -83,7 +83,7 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
   const chunkSize = 400; 
   const now = new Date().toISOString();
 
-  // Sequential chunks to avoid overwhelming the write buffer and rules engine
+  // Sequential chunks for batch processing
   for (let i = 0; i < vouchers.length; i += chunkSize) {
     const chunk = vouchers.slice(i, i + chunkSize);
     const batch = writeBatch(db);
