@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/firebase";
 import { signInAnonymously } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
+import { ModeToggle } from "@/components/ModeToggle";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -51,8 +52,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F7F3F1] p-4">
-      <Card className="w-full max-w-md shadow-xl border-t-4 border-t-primary bg-white">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+      <div className="absolute top-4 right-4">
+        <ModeToggle />
+      </div>
+      
+      <Card className="w-full max-w-md shadow-2xl border-t-4 border-t-primary bg-card">
         <CardHeader className="text-center">
           <div className="mx-auto w-24 h-24 relative mb-4">
             <Image 
@@ -64,8 +69,11 @@ export default function LoginPage() {
               unoptimized
             />
           </div>
-          <CardTitle className="text-2xl font-black text-[#E66E38]">Tropical Holidays</CardTitle>
-          <CardDescription>Authorized Access Only</CardDescription>
+          <CardTitle className="text-2xl font-black text-primary">Tropical Holidays</CardTitle>
+          <CardDescription className="flex items-center justify-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-primary" />
+            Authorized Access Only
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -79,16 +87,17 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isLoading}
-                className="h-12"
+                className="h-12 bg-background border-input"
               />
             </div>
-            <Button type="submit" className="w-full h-12 bg-[#E66E38] hover:bg-[#E66E38]/90 text-white font-bold" disabled={isLoading}>
+            <Button type="submit" className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg" disabled={isLoading}>
               {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</> : "Enter System"}
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="justify-center text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} Tropical Holidays
+        <CardFooter className="flex flex-col gap-2 justify-center text-xs text-muted-foreground border-t pt-4">
+          <p>&copy; {new Date().getFullYear()} Tropical Holidays</p>
+          <p className="opacity-50 font-mono">Secure Ledger V2.0</p>
         </CardFooter>
       </Card>
     </div>
