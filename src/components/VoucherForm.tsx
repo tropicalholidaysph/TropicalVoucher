@@ -28,6 +28,7 @@ import { voucherAmountToWordsConverter } from "@/ai/flows/voucher-amount-to-word
 import { createVoucher } from "@/lib/voucher-actions";
 import { Save, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
   voucherNo: z.string().min(1, "Voucher number is required"),
