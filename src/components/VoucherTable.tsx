@@ -51,49 +51,38 @@ import { collection, query, orderBy, where } from "firebase/firestore";
 
 /**
  * Robust date parsing for Excel imports.
- * Handles serial numbers, DD/MM/YYYY, and MM/DD/YYYY.
  */
 function parseExcelDate(val: any): string {
   if (!val) return new Date().toISOString().split('T')[0];
   
-  // Handle Excel Serial Numbers (number of days since 1900)
   if (typeof val === 'number') {
     const date = new Date(Math.round((val - 25569) * 864e5));
     return isNaN(date.getTime()) ? new Date().toISOString().split('T')[0] : date.toISOString().split('T')[0];
   }
 
   const str = String(val).trim();
-  
-  // Try native parsing
-  let date = new Date(str);
+  const date = new Date(str);
   if (!isNaN(date.getTime())) {
     return date.toISOString().split('T')[0];
   }
 
-  // Manual parse for DD/MM/YYYY or MM/DD/YYYY
   const parts = str.split(/[\/\-\.]/);
   if (parts.length === 3) {
-    const p0 = parseInt(parts[0]);
-    const p1 = parseInt(parts[1]);
-    const p2 = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
+    let d = parseInt(parts[0]);
+    let m = parseInt(parts[1]) - 1;
+    let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
 
-    // Check if first part is Day (Oman standard usually uses DD/MM/YYYY)
-    // If p0 > 12, it must be day. If p1 > 12, it must be month.
-    // Defaulting to DD/MM/YYYY for Tropical Holidays context.
-    let d = p0;
-    let m = p1 - 1;
-    let y = p2;
-
-    // Basic flip logic if p0 is clearly a month (e.g. 05/31/2023)
-    if (p0 <= 12 && p1 > 12) {
-      d = p1;
-      m = p0 - 1;
+    if (d > 31 && y <= 31) { // Probably YYYY-MM-DD
+      const tmp = d; d = y; y = tmp;
+    }
+    if (d > 12 && m < 12) { // DD/MM/YYYY
+       // keep as is
+    } else if (m > 12 && d <= 12) { // MM/DD/YYYY
+      const tmp = d; d = m + 1; m = tmp - 1;
     }
 
     const manualDate = new Date(y, m, d);
-    if (!isNaN(manualDate.getTime())) {
-      return manualDate.toISOString().split('T')[0];
-    }
+    if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
   }
 
   return new Date().toISOString().split('T')[0];
@@ -121,6 +110,7 @@ export function VoucherTable() {
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
 
+  // Handle initialization of the first sheet safely
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading || initRef.current) return;
     
@@ -131,14 +121,13 @@ export function VoucherTable() {
       return;
     }
 
-    // Only create Sheet1 if the list is truly empty and we haven't tried yet
+    // Only create Sheet1 if the list is truly empty
     initRef.current = true;
     const initializeSheet = async () => {
       try {
         const ledger = await createLedger("Sheet1", firestore);
         setActiveLedgerId(ledger.id);
       } catch (e) {
-        console.error("Initialization failed", e);
         initRef.current = false;
       }
     };
@@ -190,7 +179,7 @@ export function VoucherTable() {
     if (!file || !firestore) return;
 
     setIsImporting(true);
-    toast({ title: "Analyzing File", description: "Reading all sheets and determining layout..." });
+    toast({ title: "Importing File", description: "Reading multiple sheets..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -198,9 +187,9 @@ export function VoucherTable() {
         const data = e.target?.result;
         const workbook = XLSX.read(data, { type: "binary" });
         
-        let allVouchersToImport: any[] = [];
-        const existingLedgerNames = new Map<string, string>();
-        ledgers.forEach(l => existingLedgerNames.set(l.name.toLowerCase(), l.id));
+        let totalImportedCount = 0;
+        const existingLedgerMap = new Map<string, string>();
+        ledgers.forEach(l => existingLedgerMap.set(l.name.toLowerCase(), l.id));
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
@@ -208,15 +197,17 @@ export function VoucherTable() {
           
           if (json.length === 0) continue;
 
-          let targetLedgerId = existingLedgerNames.get(sheetName.toLowerCase());
+          let targetLedgerId = existingLedgerMap.get(sheetName.toLowerCase());
           
+          // Create ledger for this sheet if it doesn't exist
           if (!targetLedgerId) {
             const newLedger = await createLedger(sheetName, firestore);
             targetLedgerId = newLedger.id;
-            existingLedgerNames.set(sheetName.toLowerCase(), targetLedgerId);
+            existingLedgerMap.set(sheetName.toLowerCase(), targetLedgerId);
           }
 
           const vouchersForSheet = json.map((row: any) => {
+            // Flexible header detection for common fields
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || row["RIYAL"] || row["Amount"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || row["BAISA"] || 0);
             const totalAmount = ro + (bz / 1000);
@@ -226,9 +217,12 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
+            // Voucher Number detection (searching for specific column types)
+            const vNo = row["Voucher No"] || row["Voucher No."] || row["Voucher #"] || row["No"] || row["Sl No"] || row["#"];
+
             return {
-              voucherNo: String(row["Voucher No"] || row["No"] || row["Voucher #"] || "V-" + Math.floor(Math.random()*10000)),
-              date: parseExcelDate(row["Date"]),
+              voucherNo: String(vNo || "V-" + Math.floor(Math.random()*10000)),
+              date: parseExcelDate(row["Date"] || row["DATE"]),
               recipient: String(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"] || "N/A"),
               amountRO: ro,
               amountBz: bz,
@@ -241,18 +235,15 @@ export function VoucherTable() {
             };
           });
 
-          allVouchersToImport = [...allVouchersToImport, ...vouchersForSheet];
+          if (vouchersForSheet.length > 0) {
+            await bulkImportVouchers(vouchersForSheet);
+            totalImportedCount += vouchersForSheet.length;
+          }
         }
 
-        if (allVouchersToImport.length > 0) {
-          await bulkImportVouchers(allVouchersToImport);
-          toast({ title: "Import Complete", description: `Synced ${workbook.SheetNames.length} sheets and added ${allVouchersToImport.length} records.` });
-        } else {
-          toast({ variant: "destructive", title: "No Data", description: "No valid voucher data found in the file." });
-        }
+        toast({ title: "Success", description: `Imported ${totalImportedCount} records across your sheets.` });
       } catch (error) {
-        console.error("Import error", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to read Excel file structure." });
+        toast({ variant: "destructive", title: "Import Error", description: "Failed to process the spreadsheet." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -261,6 +252,7 @@ export function VoucherTable() {
     reader.readAsBinaryString(file);
   };
 
+  // Local client-side sorting to avoid requiring Firestore indexes
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -291,7 +283,7 @@ export function VoucherTable() {
             className="h-9 text-xs flex items-center gap-2 border-[#E66E38] text-[#E66E38] hover:bg-[#E66E38] hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import Spreadsheet (All Sheets)
+            Import Spreadsheet (Auto-Tabs)
           </Button>
           <Link href="/vouchers/new">
             <Button size="sm" className="h-9 text-xs bg-[#E66E38] hover:bg-[#E66E38]/90 flex items-center gap-2">
@@ -399,7 +391,7 @@ export function VoucherTable() {
           </TabsList>
         </Tabs>
         <div className="px-4 text-[10px] text-slate-400 font-medium">
-          {filteredVouchers.length} Records in current tab
+          {filteredVouchers.length} Records
         </div>
       </div>
 
@@ -408,7 +400,7 @@ export function VoucherTable() {
           <DialogHeader><DialogTitle>New Sheet</DialogTitle></DialogHeader>
           <div className="py-4">
             <Input 
-              placeholder="Enter name (e.g. Sales, Rent)..." 
+              placeholder="Sheet Name (e.g. Sales)" 
               value={newLedgerName} 
               onChange={(e) => setNewLedgerName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddLedger()}
@@ -418,7 +410,7 @@ export function VoucherTable() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setIsAddingLedger(false)}>Cancel</Button>
-            <Button size="sm" onClick={handleAddLedger}>Create Sheet</Button>
+            <Button size="sm" onClick={handleAddLedger}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -437,7 +429,7 @@ export function VoucherTable() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditingLedger(null)}>Cancel</Button>
-            <Button size="sm" onClick={handleRenameLedger}>Save Changes</Button>
+            <Button size="sm" onClick={handleRenameLedger}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
