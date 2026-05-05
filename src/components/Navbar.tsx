@@ -1,6 +1,6 @@
+
 "use client";
 
-import Link from "use-link";
 import LinkNext from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle, List, LogOut } from "lucide-react";
 import { useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
+import { ModeToggle } from "@/components/ModeToggle";
 
 export function Navbar() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export function Navbar() {
   };
 
   return (
-    <nav className="bg-white border-b sticky top-0 z-50 no-print">
+    <nav className="bg-background border-b sticky top-0 z-50 no-print">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center gap-2">
@@ -54,7 +55,8 @@ export function Navbar() {
                 <span className="hidden sm:inline">New Voucher</span>
               </Button>
             </LinkNext>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="border-[#DB0D3A] text-[#DB0D3A] hover:bg-[#DB0D3A] hover:text-white">
+            <ModeToggle />
+            <Button variant="outline" size="sm" onClick={handleLogout} className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
