@@ -75,7 +75,8 @@ export function VoucherTable() {
 
   // Auto-select or Auto-create ledger logic
   useEffect(() => {
-    if (ledgersLoading) return;
+    // CRITICAL: Guard against ledger creation if user is not yet authenticated
+    if (ledgersLoading || !user) return;
     
     if (ledgers.length === 0) {
       // If no ledgers exist, create a default one
@@ -85,7 +86,7 @@ export function VoucherTable() {
     } else if (!activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
-  }, [ledgers, activeLedgerId, ledgersLoading]);
+  }, [ledgers, activeLedgerId, ledgersLoading, user]);
 
   // Real-time Vouchers for active ledger
   const vouchersQuery = useMemoFirebase(() => {
