@@ -9,16 +9,16 @@ import {
   getDoc, 
   query, 
   orderBy, 
-  where,
-  Timestamp,
   writeBatch,
   updateDoc,
   deleteDoc,
-  Firestore
+  Firestore,
+  serverTimestamp
 } from "firebase/firestore";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 import { Voucher, Ledger } from "./types";
 
-// Get consistent firestore instance
 const getDb = () => initializeFirebase().firestore;
 
 const VOUCHERS_COLLECTION = "vouchers";
@@ -41,30 +41,48 @@ export async function createLedger(name: string): Promise<Ledger> {
     name,
     createdAt: new Date().toISOString()
   };
-  await setDoc(docRef, ledger);
+  
+  setDoc(docRef, ledger).catch(err => {
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+      path: docRef.path,
+      operation: 'create',
+      requestResourceData: ledger
+    }));
+  });
+  
   return ledger;
 }
 
 export async function renameLedger(id: string, newName: string) {
   const db = getDb();
   const docRef = doc(db, LEDGERS_COLLECTION, id);
-  await updateDoc(docRef, { name: newName });
+  updateDoc(docRef, { name: newName }).catch(err => {
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+      path: docRef.path,
+      operation: 'update',
+      requestResourceData: { name: newName }
+    }));
+  });
 }
 
 export async function deleteLedger(id: string) {
   const db = getDb();
-  await deleteDoc(doc(db, LEDGERS_COLLECTION, id));
+  const docRef = doc(db, LEDGERS_COLLECTION, id);
+  deleteDoc(docRef).catch(err => {
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+      path: docRef.path,
+      operation: 'delete'
+    }));
+  });
 }
 
 // --- Voucher Actions ---
 
-/**
- * Optimizes bulk import by running batch commits in parallel.
- */
 export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
   const db = getDb();
-  const chunkSize = 450; // Firestore limit is 500
+  const chunkSize = 450; 
   const batches = [];
+  const now = new Date().toISOString();
 
   for (let i = 0; i < vouchers.length; i += chunkSize) {
     const chunk = vouchers.slice(i, i + chunkSize);
@@ -74,14 +92,13 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
       const docRef = doc(collection(db, VOUCHERS_COLLECTION));
       batch.set(docRef, {
         ...v,
-        createdAt: Timestamp.now().toDate().toISOString(),
+        createdAt: now,
       });
     });
     
     batches.push(batch.commit());
   }
   
-  // Run all batch commits in parallel for speed
   await Promise.all(batches);
   return { success: true, count: vouchers.length };
 }
@@ -89,13 +106,17 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
 export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Firestore) {
   const docRef = doc(collection(db, VOUCHERS_COLLECTION));
   const id = docRef.id;
-
-  // Non-blocking firestore write
-  setDoc(docRef, {
+  const data = {
     ...voucher,
-    createdAt: Timestamp.now().toDate().toISOString(),
-  }).catch((error) => {
-    console.error("Background Firestore write failed:", error);
+    createdAt: new Date().toISOString(),
+  };
+
+  setDoc(docRef, data).catch((error) => {
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+      path: docRef.path,
+      operation: 'create',
+      requestResourceData: data
+    }));
   });
 
   return { success: true, id };
@@ -111,7 +132,6 @@ export async function getVoucherById(id: string): Promise<Voucher | null> {
     }
     return null;
   } catch (error) {
-    console.error("Error fetching voucher:", error);
     return null;
   }
 }

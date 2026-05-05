@@ -19,7 +19,6 @@ import {
   DialogTitle, 
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
 import { Voucher, PaymentMethod, Ledger } from "@/lib/types";
 import { 
   Search, 
@@ -74,11 +73,19 @@ export function VoucherTable() {
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
 
+  // Auto-select or Auto-create ledger logic
   useEffect(() => {
-    if (ledgers.length > 0 && !activeLedgerId) {
+    if (ledgersLoading) return;
+    
+    if (ledgers.length === 0) {
+      // If no ledgers exist, create a default one
+      createLedger("General Ledger").then(newLedger => {
+        setActiveLedgerId(newLedger.id);
+      });
+    } else if (!activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
-  }, [ledgers, activeLedgerId]);
+  }, [ledgers, activeLedgerId, ledgersLoading]);
 
   // Real-time Vouchers for active ledger
   const vouchersQuery = useMemoFirebase(() => {
@@ -130,7 +137,7 @@ export function VoucherTable() {
       toast({ 
         variant: "destructive", 
         title: "No Sheet Selected", 
-        description: "Please select a ledger sheet before importing." 
+        description: "Please wait for sheets to load or create one." 
       });
       return;
     }
@@ -139,8 +146,8 @@ export function VoucherTable() {
     setIsImporting(true);
     
     toast({ 
-      title: "Syncing Data", 
-      description: `Reading "${file.name}"... Updating ledger "${activeSheetName}".` 
+      title: "Importing File", 
+      description: `Processing "${file.name}"... Please wait.` 
     });
     
     const reader = new FileReader();
@@ -159,8 +166,8 @@ export function VoucherTable() {
         }
 
         const vouchersToImport = json.map((row: any) => {
-          const ro = Number(row["Amount (R.O.)"]) || Number(row["RO"]) || 0;
-          const bz = Number(row["Amount (Bz)"]) || Number(row["Bz"]) || 0;
+          const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
+          const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
           const totalAmount = ro + (bz / 1000);
           
           let method: PaymentMethod = "Cash";
@@ -169,16 +176,16 @@ export function VoucherTable() {
           if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
           return {
-            voucherNo: String(row["Voucher No"] || row["No"] || "V-0000"),
+            voucherNo: String(row["Voucher No"] || row["No"] || `V-${Math.floor(Math.random() * 10000)}`),
             date: row["Date"] ? new Date(row["Date"]).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             recipient: String(row["Paid To"] || row["Recipient"] || "N/A"),
             amountRO: ro,
             amountBz: bz,
             sumInWords: convertAmountToWords(totalAmount),
             paymentMethod: method,
-            bankName: row["Bank"] || "",
-            refNo: row["Cheque/Ref No"] || row["Ref"] || "",
-            purpose: row["Being (Purpose)"] || row["Purpose"] || "N/A",
+            bankName: String(row["Bank"] || ""),
+            refNo: String(row["Cheque/Ref No"] || row["Ref"] || ""),
+            purpose: String(row["Being (Purpose)"] || row["Purpose"] || "N/A"),
             ledgerId: activeLedgerId
           };
         });
@@ -186,15 +193,14 @@ export function VoucherTable() {
         await bulkImportVouchers(vouchersToImport);
         
         toast({ 
-          title: "Import Successful", 
-          description: `Added ${vouchersToImport.length} vouchers to "${activeSheetName}".` 
+          title: "Success", 
+          description: `Imported ${vouchersToImport.length} vouchers to "${activeSheetName}".` 
         });
       } catch (error) {
-        console.error("Import error:", error);
         toast({ 
           variant: "destructive", 
-          title: "Import Error", 
-          description: "Check your file format and try again." 
+          title: "Import Failed", 
+          description: "Check your file format." 
         });
       } finally {
         setIsImporting(false);
@@ -242,7 +248,7 @@ export function VoucherTable() {
           <Button 
             variant="outline" 
             onClick={() => fileInputRef.current?.click()}
-            disabled={isImporting}
+            disabled={isImporting || ledgersLoading}
             className="flex-1 sm:flex-none h-10 flex items-center gap-2 bg-white"
           >
             {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
@@ -256,7 +262,6 @@ export function VoucherTable() {
       </div>
 
       <div className="rounded-md border bg-white overflow-hidden shadow-sm relative min-h-[400px]">
-        {/* Sleek Progress Bar for loading states instead of full overlay */}
         {(isImporting || vouchersLoading || ledgersLoading) && (
           <div className="absolute top-0 left-0 right-0 z-20 h-1">
             <div className="h-full bg-primary animate-[shimmer_1.5s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-primary via-primary/50 to-primary" />
@@ -348,7 +353,6 @@ export function VoucherTable() {
         </Tabs>
       </div>
 
-      {/* Sheet Management Dialogs */}
       <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
         <DialogContent>
           <DialogHeader><DialogTitle>New Ledger Sheet</DialogTitle></DialogHeader>
