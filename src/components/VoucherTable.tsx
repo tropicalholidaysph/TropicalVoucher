@@ -59,8 +59,8 @@ export function VoucherTable() {
   const [newLedgerName, setNewLedgerName] = useState("");
   const [editingLedger, setEditingLedger] = useState<Ledger | null>(null);
   const [editName, setEditName] = useState("");
-  const [hasRequestedInitialSheet, setHasRequestedInitialSheet] = useState(false);
   
+  const initRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -75,22 +75,21 @@ export function VoucherTable() {
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading) return;
     
-    // Only attempt to create Sheet1 if we haven't already and the data confirms there are none
-    if (ledgers.length === 0 && !activeLedgerId && !ledgersLoading && !hasRequestedInitialSheet) {
+    if (ledgers.length === 0 && !initRef.current) {
+      initRef.current = true;
       const initializeSheet = async () => {
-        setHasRequestedInitialSheet(true);
         try {
           const ledger = await createLedger("Sheet1", firestore);
           setActiveLedgerId(ledger.id);
         } catch (e) {
-          setHasRequestedInitialSheet(false);
+          initRef.current = false;
         }
       };
       initializeSheet();
     } else if (ledgers.length > 0 && !activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
-  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore, hasRequestedInitialSheet]);
+  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
 
   const vouchersQuery = useMemoFirebase(() => {
     if (!firestore || !user || !activeLedgerId || isUserLoading || ledgersLoading) return null;
