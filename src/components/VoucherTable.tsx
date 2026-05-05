@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -90,6 +91,7 @@ export function VoucherTable() {
         const ledger = await createLedger("Sheet1", firestore);
         setActiveLedgerId(ledger.id);
       } catch (e) {
+        console.error("Initialization failed", e);
         initRef.current = false;
       }
     };
@@ -141,7 +143,7 @@ export function VoucherTable() {
     if (!file || !firestore) return;
 
     setIsImporting(true);
-    toast({ title: "Starting Multi-Sheet Import", description: "Reading all sheets in your Excel file..." });
+    toast({ title: "Analyzing File", description: "Reading all sheets and determining layout..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -150,10 +152,8 @@ export function VoucherTable() {
         const workbook = XLSX.read(data, { type: "binary" });
         
         let allVouchersToImport: any[] = [];
-        
-        // Use current ledgers as a base for identifying existing sheets
-        const sheetNameToIdMap = new Map<string, string>();
-        ledgers.forEach(l => sheetNameToIdMap.set(l.name.toLowerCase(), l.id));
+        const existingLedgerNames = new Map<string, string>();
+        ledgers.forEach(l => existingLedgerNames.set(l.name.toLowerCase(), l.id));
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
@@ -161,36 +161,36 @@ export function VoucherTable() {
           
           if (json.length === 0) continue;
 
-          let targetLedgerId = sheetNameToIdMap.get(sheetName.toLowerCase());
+          let targetLedgerId = existingLedgerNames.get(sheetName.toLowerCase());
           
-          // If sheet doesn't exist as a ledger, create it now
+          // Create a new tab for this sheet if it doesn't exist
           if (!targetLedgerId) {
             const newLedger = await createLedger(sheetName, firestore);
             targetLedgerId = newLedger.id;
-            sheetNameToIdMap.set(sheetName.toLowerCase(), targetLedgerId);
+            existingLedgerNames.set(sheetName.toLowerCase(), targetLedgerId);
           }
 
           const vouchersForSheet = json.map((row: any) => {
-            const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
-            const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
+            const ro = Number(row["Amount (R.O.)"] || row["RO"] || row["RIYAL"] || 0);
+            const bz = Number(row["Amount (Bz)"] || row["Bz"] || row["BAISA"] || 0);
             const totalAmount = ro + (bz / 1000);
             
             let method: PaymentMethod = "Cash";
-            const methodStr = String(row["Payment Method"] || row["Method"] || "").toLowerCase();
+            const methodStr = String(row["Payment Method"] || row["Method"] || row["MODE"] || "").toLowerCase();
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
             return {
-              voucherNo: String(row["Voucher No"] || row["No"] || "V-" + Math.floor(Math.random()*1000)),
+              voucherNo: String(row["Voucher No"] || row["No"] || "V-" + Math.floor(Math.random()*10000)),
               date: row["Date"] ? new Date(row["Date"]).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-              recipient: String(row["Paid To"] || row["Recipient"] || "N/A"),
+              recipient: String(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || "N/A"),
               amountRO: ro,
               amountBz: bz,
               sumInWords: convertAmountToWords(totalAmount),
               paymentMethod: method,
               bankName: String(row["Bank"] || ""),
-              refNo: String(row["Cheque/Ref No"] || row["Ref"] || ""),
-              purpose: String(row["Being (Purpose)"] || row["Purpose"] || "N/A"),
+              refNo: String(row["Cheque/Ref No"] || row["Ref"] || row["CHQ NO"] || ""),
+              purpose: String(row["Being (Purpose)"] || row["Purpose"] || row["DESCRIPTION"] || "N/A"),
               ledgerId: targetLedgerId
             };
           });
@@ -198,16 +198,15 @@ export function VoucherTable() {
           allVouchersToImport = [...allVouchersToImport, ...vouchersForSheet];
         }
 
-        if (allVouchersToImport.length === 0) {
-          toast({ variant: "destructive", title: "Empty File", description: "No valid data found in any sheet." });
-          setIsImporting(false);
-          return;
+        if (allVouchersToImport.length > 0) {
+          await bulkImportVouchers(allVouchersToImport);
+          toast({ title: "Import Complete", description: `Synced ${workbook.SheetNames.length} sheets and added ${allVouchersToImport.length} records.` });
+        } else {
+          toast({ variant: "destructive", title: "No Data", description: "No valid voucher data found in the file." });
         }
-
-        await bulkImportVouchers(allVouchersToImport);
-        toast({ title: "Import Successful", description: `Processed ${allVouchersToImport.length} records across ${workbook.SheetNames.length} sheets.` });
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Error", description: "Failed to process the multi-sheet file." });
+        console.error("Import error", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to read Excel file structure." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -216,6 +215,7 @@ export function VoucherTable() {
     reader.readAsBinaryString(file);
   };
 
+  // Client side filtering and sorting to avoid index errors
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -246,7 +246,7 @@ export function VoucherTable() {
             className="h-9 text-xs flex items-center gap-2 border-[#E66E38] text-[#E66E38] hover:bg-[#E66E38] hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import All Sheets (XLSX)
+            Import Spreadsheet (All Sheets)
           </Button>
           <Link href="/vouchers/new">
             <Button size="sm" className="h-9 text-xs bg-[#E66E38] hover:bg-[#E66E38]/90 flex items-center gap-2">
