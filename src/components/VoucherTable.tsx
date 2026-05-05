@@ -174,9 +174,9 @@ export function VoucherTable() {
           const worksheet = workbook.Sheets[sheetName];
           const rawJson = XLSX.utils.sheet_to_json(worksheet) as any[];
           
-          // Filter out rows that don't have core identifying data (like Sl No or Recipient)
+          // CRITICAL: Filter out rows that don't have core data to stop at the actual end of records (e.g. 50 vs 100)
           const json = rawJson.filter(row => {
-            const hasId = !!(row["Voucher No"] || row["Sl No"] || row["No"] || row["Serial"]);
+            const hasId = !!(row["Voucher No"] || row["Sl No"] || row["No"] || row["Serial"] || row["Serial No"] || row["No."]);
             const hasRecipient = !!(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"]);
             return hasId || hasRecipient;
           });
@@ -244,10 +244,12 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
+      // Primary sort: Date (Descending)
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       if (dateB !== dateA) return dateB - dateA;
       
+      // Secondary sort: Numeric Voucher Number (Descending)
       const numA = parseInt(a.voucherNo.replace(/\D/g, '')) || 0;
       const numB = parseInt(b.voucherNo.replace(/\D/g, '')) || 0;
       return numB - numA;
@@ -344,7 +346,7 @@ export function VoucherTable() {
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="text-lg font-bold text-slate-600 mb-1">Secure Dashboard</h3>
-            <p className="max-w-xs text-sm">Import your financial ledger file to begin visualizing and managing vouchers.</p>
+            <p className="max-w-xs text-sm">Import your financial ledger file to begin visualizing and managing vouchers. Ledger tabs will appear at the bottom once data is loaded.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -391,8 +393,8 @@ export function VoucherTable() {
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-destructive font-bold">{v.voucherNo}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-800">{v.recipient}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] text-right font-black">{v.amountRO.toLocaleString()}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] text-right font-mono">{v.amountBz.toString().padStart(3, '0')}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-mono text-[11px]">{v.amountBz.toString().padStart(3, '0')}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[10px] uppercase font-semibold text-slate-500">{v.paymentMethod}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate text-slate-500 italic">{v.bankName || "-"}</TableCell>
