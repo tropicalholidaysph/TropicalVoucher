@@ -1,0 +1,293 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { 
+  Form, 
+  FormControl, 
+  FormField, 
+  FormItem, 
+  FormLabel, 
+  FormMessage 
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { voucherAmountToWordsConverter } from "@/ai/flows/voucher-amount-to-words-converter";
+import { createVoucher } from "@/lib/voucher-actions";
+import { Save, Loader2, Sparkles } from "lucide-react";
+
+const formSchema = z.object({
+  voucherNo: z.string().min(1, "Voucher number is required"),
+  date: z.string().min(1, "Date is required"),
+  recipient: z.string().min(2, "Recipient name is required"),
+  amountRO: z.coerce.number().min(0, "Amount must be positive"),
+  amountBz: z.coerce.number().min(0).max(999, "Baisa must be between 0 and 999"),
+  sumInWords: z.string().min(1, "Sum in words is required"),
+  paymentMethod: z.enum(['Cash', 'Cheque', 'Bank Transfer']),
+  bankName: z.string().optional(),
+  refNo: z.string().optional(),
+  purpose: z.string().min(2, "Purpose is required"),
+});
+
+export function VoucherForm() {
+  const [isConverting, setIsConverting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      voucherNo: `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
+      date: new Date().toISOString().split('T')[0],
+      paymentMethod: 'Cash',
+      amountBz: 0,
+      sumInWords: "",
+    },
+  });
+
+  const amountRO = form.watch("amountRO");
+  const amountBz = form.watch("amountBz");
+
+  useEffect(() => {
+    async function convert() {
+      if (amountRO > 0) {
+        setIsConverting(true);
+        try {
+          const totalAmount = amountRO + (amountBz / 1000);
+          const result = await voucherAmountToWordsConverter({ amountInRO: totalAmount });
+          form.setValue("sumInWords", result.amountInWords);
+        } catch (error) {
+          console.error("AI Conversion failed:", error);
+        } finally {
+          setIsConverting(false);
+        }
+      }
+    }
+
+    const timer = setTimeout(convert, 1000);
+    return () => clearTimeout(timer);
+  }, [amountRO, amountBz, form]);
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsSubmitting(true);
+    try {
+      const res = await createVoucher(values);
+      if (res.success) {
+        router.push(`/vouchers/${res.id}`);
+      } else {
+        alert("Failed to save voucher");
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Card className="w-full max-w-4xl mx-auto shadow-lg border-primary/20">
+      <CardHeader className="bg-primary/5 border-b">
+        <CardTitle className="flex items-center gap-2 text-primary font-headline">
+          <Save className="w-5 h-5" />
+          Create New Voucher
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-6">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="voucherNo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Voucher No.</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="paymentMethod"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Method</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select method" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="Cheque">Cheque</SelectItem>
+                        <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="recipient"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Paid To (Recipient)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter full name or company" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-2">
+                <FormField
+                  control={form.control}
+                  name="amountRO"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount R.O.</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.001" placeholder="Rial" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="amountBz"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Baisa</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="Baisa" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={form.control}
+                name="sumInWords"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2">
+                      Sum of Rial Omani (In Words)
+                      {isConverting && <Loader2 className="w-3 h-3 animate-spin text-primary" />}
+                      {!isConverting && amountRO > 0 && <Sparkles className="w-3 h-3 text-primary" />}
+                    </FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Automatically generated..." 
+                        className="bg-muted/30" 
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="bankName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Bank Name (Optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Bank Muscat" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="refNo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Reference / Cheque No.</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ref #" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="purpose"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Being (Purpose of Payment)</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="Describe what the payment is for..." 
+                      className="min-h-[100px]" 
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <Button 
+              type="submit" 
+              className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Saving Voucher...
+                </>
+              ) : (
+                "Save and Generate Voucher"
+              )}
+            </Button>
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
+  );
+}
