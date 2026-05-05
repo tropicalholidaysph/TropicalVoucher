@@ -188,7 +188,7 @@ export function VoucherTable() {
             if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) return;
 
             const vNo = vNoRaw ? String(vNoRaw).replace(/\D/g, '').trim() : String(index + 1);
-            const isVoid = !recipient || (ro === 0 && bz === 0);
+            const isActuallyVoid = !recipient || (ro === 0 && bz === 0) || String(recipient).includes("VOID");
             const totalAmount = ro + (bz / 1000);
             
             let method: PaymentMethod = "Cash";
@@ -202,13 +202,13 @@ export function VoucherTable() {
               recipient: recipient ? String(recipient) : "VOID / NO DATA",
               amountRO: ro,
               amountBz: bz,
-              sumInWords: isVoid ? "VOID" : convertAmountToWords(totalAmount),
+              sumInWords: isActuallyVoid ? "VOID" : convertAmountToWords(totalAmount),
               paymentMethod: method,
               bankName: String(row["Bank"] || ""),
               refNo: String(row["Cheque/Ref No"] || row["Ref No"] || row["Ref"] || ""),
               purpose: purpose || "N/A",
               ledgerId: targetLedgerId as string,
-              isVoid: isVoid
+              isVoid: isActuallyVoid
             });
           });
 
@@ -232,7 +232,6 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
-    // Strictly map data to the columns we want in Excel
     const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
@@ -247,11 +246,9 @@ export function VoucherTable() {
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
 
-    // Apply auto-filter to headers
     const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
     worksheet['!autofilter'] = { ref: XLSX.utils.encode_range(range) };
 
-    // Set column widths and hide everything from J onwards (index 9)
     const wscols: any[] = [
       { wch: 12 }, // A: Voucher No
       { wch: 12 }, // B: Date
@@ -264,16 +261,15 @@ export function VoucherTable() {
       { wch: 15 }, // I: Ref No
     ];
     
-    // Hide columns from J to Z to make it look "fitted"
-    for (let i = 9; i <= 25; i++) {
+    // Hide a significant number of columns from J onwards to make it look empty
+    for (let i = 9; i <= 200; i++) {
       wscols[i] = { hidden: true };
     }
     worksheet['!cols'] = wscols;
 
-    // Hide extra rows beyond the data to remove "ghost" cells
     const wsrows: any[] = [];
-    // Hide the next 500 rows to ensure it looks blank below the data
-    for (let i = exportData.length + 1; i <= exportData.length + 500; i++) {
+    // Hide a huge range of rows past the data to clear out ghost numbers
+    for (let i = exportData.length + 1; i <= exportData.length + 5000; i++) {
       wsrows[i] = { hidden: true };
     }
     worksheet['!rows'] = wsrows;
@@ -432,14 +428,14 @@ export function VoucherTable() {
                 </TableRow>
               ) : (
                 filteredVouchers.map((v) => {
-                  const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || v.sumInWords === "VOID";
+                  const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID");
                   return (
                     <TableRow 
                       key={v.id} 
                       className={cn(
                         "border-none h-9 transition-colors",
                         isActuallyVoid 
-                          ? "bg-red-500/20 hover:bg-red-500/30 dark:bg-red-900/40 dark:hover:bg-red-900/60" 
+                          ? "bg-red-500/40 hover:bg-red-500/50 dark:bg-red-900/60 dark:hover:bg-red-900/80" 
                           : "bg-background hover:bg-muted/10"
                       )}
                     >
