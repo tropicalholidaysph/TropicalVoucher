@@ -259,8 +259,14 @@ export function VoucherTable() {
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
 
+    // Tighten the reference to exactly the data range
+    worksheet['!ref'] = XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: data.length - 1, c: header.length - 1 }
+    });
+
     // Apply Styles to Header
-    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    const range = XLSX.utils.decode_range(worksheet['!ref']);
     for (let C = range.s.c; C <= range.e.c; ++C) {
       const address = XLSX.utils.encode_col(C) + "1";
       if (!worksheet[address]) continue;
@@ -271,29 +277,28 @@ export function VoucherTable() {
       };
     }
 
-    // Set Column Widths
-    const wscols: any[] = [
-      { wch: 12 }, // A: Voucher No
-      { wch: 12 }, // B: Date
-      { wch: 35 }, // C: Paid To
-      { wch: 14 }, // D: Amount RO
-      { wch: 8 },  // E: Amount Bz
-      { wch: 18 }, // F: Method
-      { wch: 45 }, // G: Purpose
-      { wch: 20 }, // H: Bank
-      { wch: 15 }, // I: Ref No
-    ];
+    // Set Column Widths and Hide everything else
+    const wscols: any[] = [];
+    wscols[0] = { wch: 12 }; // A: Voucher No
+    wscols[1] = { wch: 12 }; // B: Date
+    wscols[2] = { wch: 35 }; // C: Paid To
+    wscols[3] = { wch: 14 }; // D: Amount RO
+    wscols[4] = { wch: 8 };  // E: Amount Bz
+    wscols[5] = { wch: 18 }; // F: Method
+    wscols[6] = { wch: 45 }; // G: Purpose
+    wscols[7] = { wch: 20 }; // H: Bank
+    wscols[8] = { wch: 15 }; // I: Ref No
     
-    // Aggressively Hide everything from J onwards
-    for (let i = 9; i <= 200; i++) {
+    // Aggressively Hide columns from J (index 9) to the end of typical visible range
+    for (let i = 9; i <= 100; i++) {
       wscols[i] = { hidden: true };
     }
     worksheet['!cols'] = wscols;
 
-    // Aggressively Hide everything past the data rows
+    // Aggressively Hide rows beyond the data
     const wsrows: any[] = [];
-    for (let i = data.length; i <= data.length + 5000; i++) {
-      wsrows[i] = { hidden: true };
+    for (let i = data.length; i <= 2000; i++) {
+      wsrows[i] = { hidden: true, hpt: 0 };
     }
     worksheet['!rows'] = wsrows;
 
@@ -458,7 +463,7 @@ export function VoucherTable() {
                       className={cn(
                         "border-none h-9 transition-colors",
                         isActuallyVoid 
-                          ? "bg-red-100 hover:bg-red-200 dark:bg-red-900/60 dark:hover:bg-red-900/80" 
+                          ? "bg-red-600 hover:bg-red-700 text-white" 
                           : "bg-background hover:bg-muted/10"
                       )}
                     >
@@ -466,6 +471,7 @@ export function VoucherTable() {
                         <Checkbox 
                           checked={selectedIds.has(v.id)}
                           onCheckedChange={() => toggleSelect(v.id)}
+                          className={isActuallyVoid ? "border-white data-[state=checked]:bg-white data-[state=checked]:text-red-600" : ""}
                         />
                       </TableCell>
                       <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-mono font-bold text-left">
@@ -483,12 +489,12 @@ export function VoucherTable() {
                       <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate font-mono text-left">{v.refNo || "-"}</TableCell>
                       <TableCell className="border-b border-border/50 px-2 py-1 flex items-center justify-start gap-1 no-print">
                         <Link href={`/vouchers/${v.id}`}>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-primary">
+                          <Button variant="ghost" size="icon" className={cn("h-6 w-6", isActuallyVoid ? "text-white hover:bg-white/20" : "text-primary")}>
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                         </Link>
                         <Link href={`/vouchers/${v.id}/edit`}>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
+                          <Button variant="ghost" size="icon" className={cn("h-6 w-6", isActuallyVoid ? "text-white/80 hover:bg-white/20" : "text-muted-foreground")}>
                             <Edit2 className="w-3.5 h-3.5" />
                           </Button>
                         </Link>
