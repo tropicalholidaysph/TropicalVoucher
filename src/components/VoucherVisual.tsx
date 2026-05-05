@@ -32,6 +32,7 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
               alt="Tropical Holidays Logo" 
               fill
               className="object-contain"
+              unoptimized
             />
           </div>
           <div className="text-center">

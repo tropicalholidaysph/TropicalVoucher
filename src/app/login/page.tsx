@@ -61,6 +61,7 @@ export default function LoginPage() {
               fill
               className="object-contain"
               priority
+              unoptimized
             />
           </div>
           <CardTitle className="text-2xl font-black text-[#E66E38]">Tropical Holidays</CardTitle>
