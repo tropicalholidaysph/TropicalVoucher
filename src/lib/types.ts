@@ -20,4 +20,5 @@ export interface Voucher {
   purpose: string;
   ledgerId: string;
   createdAt: string;
+  isVoid?: boolean;
 }

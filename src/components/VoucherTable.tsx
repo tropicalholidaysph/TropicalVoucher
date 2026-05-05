@@ -52,6 +52,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, where } from "firebase/firestore";
+import { cn } from "@/lib/utils";
 
 function parseExcelDate(val: any): string {
   if (!val) return new Date().toISOString().split('T')[0];
@@ -147,7 +148,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing Ledger", description: "Filtering valid rows and sheets..." });
+    toast({ title: "Importing Ledger", description: "Processing up to 50 rows per sheet..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -161,15 +162,10 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          const rawJson = XLSX.utils.sheet_to_json(worksheet) as any[];
+          // Strictly take only the first 50 rows
+          const rawJson = XLSX.utils.sheet_to_json(worksheet).slice(0, 50) as any[];
           
-          const validRows = rawJson.filter(row => {
-            const vNo = row["Sl No"] || row["Voucher No"] || row["Voucher No."] || row["Serial No"] || row["No"] || row["#"] || row["Serial"];
-            const recipient = row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"];
-            return !!vNo && !!recipient; 
-          });
-
-          if (validRows.length === 0) continue;
+          if (rawJson.length === 0) continue;
 
           let targetLedgerId = existingLedgerMap.get(sheetName.trim().toLowerCase());
           
@@ -180,9 +176,15 @@ export function VoucherTable() {
             if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
           }
 
-          const vouchersForSheet = validRows.map((row: any) => {
+          const vouchersForSheet = rawJson.map((row: any, index: number) => {
+            const vNo = row["Sl No"] || row["Voucher No"] || row["Voucher No."] || row["Serial No"] || row["No"] || row["#"] || row["Serial"];
+            const recipient = row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"];
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || row["RIYAL"] || row["Amount"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || row["BAISA"] || 0);
+            
+            // Mark as void if critical data is missing
+            const isVoid = !recipient || (!ro && !bz);
+
             const totalAmount = ro + (bz / 1000);
             
             let method: PaymentMethod = "Cash";
@@ -190,20 +192,19 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
-            const vNo = row["Sl No"] || row["Voucher No"] || row["Voucher No."] || row["Serial No"] || row["No"] || row["#"] || row["Serial"];
-
             return {
-              voucherNo: String(vNo).replace(/^V-/i, ''), 
+              voucherNo: vNo ? String(vNo).replace(/^V-/i, '') : String(index + 1), 
               date: parseExcelDate(row["Date"] || row["DATE"]),
-              recipient: String(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"] || "N/A"),
+              recipient: recipient ? String(recipient) : "VOID / NO DATA",
               amountRO: ro,
               amountBz: bz,
-              sumInWords: convertAmountToWords(totalAmount),
+              sumInWords: isVoid ? "VOID" : convertAmountToWords(totalAmount),
               paymentMethod: method,
               bankName: String(row["Bank"] || ""),
               refNo: String(row["Cheque/Ref No"] || row["Ref"] || row["CHQ NO"] || ""),
               purpose: String(row["Being (Purpose)"] || row["Purpose"] || row["DESCRIPTION"] || "N/A"),
-              ledgerId: targetLedgerId as string
+              ledgerId: targetLedgerId as string,
+              isVoid: isVoid
             };
           });
 
@@ -331,7 +332,7 @@ export function VoucherTable() {
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="text-lg font-bold text-slate-600 mb-1">Spreadsheet Dashboard</h3>
-            <p className="max-w-xs text-sm">Upload your Excel file. The app will automatically read all sheets and create tabs at the bottom.</p>
+            <p className="max-w-xs text-sm">Upload your Excel file. The app will automatically read up to 50 rows per sheet.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -367,7 +368,10 @@ export function VoucherTable() {
                 filteredVouchers.map((v, idx) => (
                   <TableRow 
                     key={v.id} 
-                    className={idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100"}
+                    className={cn(
+                      idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100",
+                      v.isVoid && "bg-red-50 text-red-600"
+                    )}
                   >
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print">
                       <Checkbox 
@@ -375,9 +379,13 @@ export function VoucherTable() {
                         onCheckedChange={() => toggleSelect(v.id)}
                       />
                     </TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-destructive font-bold">{v.voucherNo}</TableCell>
+                    <TableCell className={cn("border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono font-bold", v.isVoid ? "text-red-500" : "text-destructive")}>
+                      {v.isVoid ? "VOID" : v.voucherNo}
+                    </TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-800">{v.recipient}</TableCell>
+                    <TableCell className={cn("border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold", v.isVoid ? "text-red-600" : "text-slate-800")}>
+                      {v.recipient}
+                    </TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-mono text-[11px]">{v.amountBz.toString().padStart(3, '0')}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[10px] uppercase font-semibold text-slate-500">{v.paymentMethod}</TableCell>
@@ -386,7 +394,7 @@ export function VoucherTable() {
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
                     <TableCell className="px-2 py-1 text-center no-print">
                       <Link href={`/vouchers/${v.id}`}>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:text-white hover:bg-primary">
+                        <Button variant="ghost" size="icon" className={cn("h-6 w-6", v.isVoid ? "text-red-400" : "text-primary hover:text-white hover:bg-primary")}>
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
                       </Link>
