@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -6,7 +5,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, List, LogOut } from "lucide-react";
-import logo from "@/app/public/logo.png";
 
 export function Navbar() {
   const router = useRouter();
@@ -22,12 +20,11 @@ export function Navbar() {
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center gap-2">
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="relative w-10 h-10 overflow-hidden rounded-lg">
+              <div className="relative w-12 h-12">
                 <Image 
-                  src={logo} 
+                  src="/logo.png" 
                   alt="Tropical Holidays Logo" 
-                  width={40} 
-                  height={40}
+                  fill
                   className="object-contain"
                   data-ai-hint="tropical palm"
                 />

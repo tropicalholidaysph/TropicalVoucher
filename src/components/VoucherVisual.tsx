@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { Voucher } from "@/lib/types";
 import { format } from "date-fns";
-import logo from "@/app/public/logo.png";
 
 interface VoucherVisualProps {
   voucher: Voucher;
@@ -29,7 +28,7 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         <div className="flex flex-col items-center justify-center w-1/3">
           <div className="relative w-24 h-20 mb-2">
             <Image 
-              src={logo} 
+              src="/logo.png" 
               alt="Tropical Holidays Logo" 
               fill
               className="object-contain"
