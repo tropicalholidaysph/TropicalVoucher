@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -58,6 +59,7 @@ export function VoucherTable() {
   const [newLedgerName, setNewLedgerName] = useState("");
   const [editingLedger, setEditingLedger] = useState<Ledger | null>(null);
   const [editName, setEditName] = useState("");
+  const [hasRequestedInitialSheet, setHasRequestedInitialSheet] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -73,25 +75,25 @@ export function VoucherTable() {
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading) return;
     
-    if (ledgers.length === 0 && !activeLedgerId && !ledgersLoading) {
+    // Only attempt to create Sheet1 if we haven't already and the data confirms there are none
+    if (ledgers.length === 0 && !activeLedgerId && !ledgersLoading && !hasRequestedInitialSheet) {
       const initializeSheet = async () => {
+        setHasRequestedInitialSheet(true);
         try {
           const ledger = await createLedger("Sheet1", firestore);
           setActiveLedgerId(ledger.id);
         } catch (e) {
-          // Handled by global listener
+          setHasRequestedInitialSheet(false);
         }
       };
       initializeSheet();
     } else if (ledgers.length > 0 && !activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
-  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
+  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore, hasRequestedInitialSheet]);
 
   const vouchersQuery = useMemoFirebase(() => {
     if (!firestore || !user || !activeLedgerId || isUserLoading || ledgersLoading) return null;
-    // We remove the server-side orderBy here because combined with the 'where' it requires 
-    // a composite index. We will sort client-side for immediate reliability.
     return query(
       collection(firestore, "vouchers"),
       where("ledgerId", "==", activeLedgerId)
@@ -200,7 +202,6 @@ export function VoucherTable() {
       v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    // Sort by date/createdAt descending on the client-side to avoid index requirements
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return (
