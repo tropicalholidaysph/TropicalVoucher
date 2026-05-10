@@ -105,45 +105,44 @@ export async function deleteLedger(id: string, uid: string) {
     throw new Error("Unauthorized");
   }
   const db = getDb();
+  
+  // 1. Delete the ledger document
   const docRef = doc(db, LEDGERS_COLLECTION, id);
-  await deleteDoc(docRef).catch(err => {
-    errorEmitter.emit('permission-error', new FirestorePermissionError({
-      path: docRef.path,
-      operation: 'delete'
-    }));
-  });
-  await logActivity("DELETE_LEDGER", `ID: ${id}`, uid, role!);
+  await deleteDoc(docRef);
+
+  // 2. Delete all vouchers associated with this ledger
+  const vq = query(collection(db, VOUCHERS_COLLECTION), where("ledgerId", "==", id));
+  const vSnap = await getDocs(vq);
+  
+  if (!vSnap.empty) {
+    const batch = writeBatch(db);
+    vSnap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+
+  // 3. Delete the counter document
+  const counterRef = doc(db, "ledger_counters", id);
+  await deleteDoc(counterRef).catch(() => {}); // Ignore if doesn't exist
+
+  await logActivity("DELETE_LEDGER", `ID: ${id} and all its vouchers`, uid, role!);
 }
 
 export async function getNextVoucherNumber(ledgerId: string): Promise<number> {
   const db = getDb();
-  const counterRef = doc(db, "ledger_counters", ledgerId);
+  
+  const existingQ = query(
+    collection(db, VOUCHERS_COLLECTION),
+    where("ledgerId", "==", ledgerId)
+  );
+  
+  const existingSnap = await getDocs(existingQ);
+  
+  const maxExisting = existingSnap.docs.reduce((max, d) => {
+    const n = parseInt(d.data().voucherNo) || 0;
+    return n > max ? n : max;
+  }, 0);
 
-  const newCount = await runTransaction(db, async (transaction) => {
-    const counterDoc = await transaction.get(counterRef);
-
-    if (counterDoc.exists()) {
-      const next = counterDoc.data().count + 1;
-      transaction.set(counterRef, { count: next }, { merge: true });
-      return next;
-    } else {
-      const existingQ = query(
-        collection(db, VOUCHERS_COLLECTION),
-        where("ledgerId", "==", ledgerId)
-      );
-      const existingSnap = await getDocs(existingQ);
-      const maxExisting = existingSnap.docs.reduce((max, d) => {
-        const n = parseInt(d.data().voucherNo) || 0;
-        return n > max ? n : max;
-      }, 0);
-
-      const next = maxExisting + 1;
-      transaction.set(counterRef, { count: next });
-      return next;
-    }
-  });
-
-  return newCount;
+  return maxExisting + 1;
 }
 
 // --- Voucher Actions ---

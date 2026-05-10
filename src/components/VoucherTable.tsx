@@ -89,10 +89,6 @@ export function VoucherTable() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  const [isGlobalSearch, setIsGlobalSearch] = useState(false);
-  const [globalResults, setGlobalResults] = useState<Voucher[]>([]);
-  const [isGlobalSearching, setIsGlobalSearching] = useState(false);
-
   const { isAdmin, isEmployee } = useRole();
   const user = useAuth().currentUser;
   const { toast } = useToast();
@@ -121,7 +117,7 @@ export function VoucherTable() {
 
   // Fetch Vouchers for Active Ledger
   useEffect(() => {
-    if (!activeLedgerId || isGlobalSearch) return;
+    if (!activeLedgerId) return;
 
     async function fetchVouchers() {
       setVouchersLoading(true);
@@ -129,60 +125,34 @@ export function VoucherTable() {
         const q = query(
           collection(firestore, "vouchers"),
           where("ledgerId", "==", activeLedgerId),
-          orderBy("voucherNo", "desc")
+          orderBy("voucherNo", "asc")
         );
         const snapshot = await getDocs(q);
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher));
         setVouchers(data);
         setLastRefresh(new Date());
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching vouchers:", error);
+        if (error.message?.includes("index")) {
+          toast({
+            variant: "destructive",
+            title: "Database Index Required",
+            description: "A composite index is needed for this view. Please check your browser console (F12) for the creation link.",
+            duration: 10000,
+          });
+        }
       } finally {
         setVouchersLoading(false);
       }
     }
 
     fetchVouchers();
-  }, [activeLedgerId, firestore, isGlobalSearch]);
+  }, [activeLedgerId, firestore]);
 
   // Reset selection on ledger or mode change
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [activeLedgerId, isGlobalSearch]);
-
-  // Global Search Logic
-  useEffect(() => {
-    if (!isGlobalSearch || searchTerm.trim().length < 2) {
-      setGlobalResults([]);
-      return;
-    }
-
-    const handler = setTimeout(async () => {
-      setIsGlobalSearching(true);
-      try {
-        const q = query(
-          collection(firestore, "vouchers"),
-          orderBy("voucherNo", "desc")
-        );
-        const snapshot = await getDocs(q);
-        const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Voucher));
-        
-        const filtered = all.filter(v => 
-          v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
-        ).slice(0, 50);
-        
-        setGlobalResults(filtered);
-      } catch (error) {
-        console.error("Global search error:", error);
-      } finally {
-        setIsGlobalSearching(false);
-      }
-    }, 400);
-
-    return () => clearTimeout(handler);
-  }, [searchTerm, isGlobalSearch, firestore]);
+  }, [activeLedgerId]);
 
   async function handleAddLedger() {
     if (!newLedgerName.trim() || !firestore || !user) return;
@@ -210,6 +180,7 @@ export function VoucherTable() {
         setActiveLedgerId(updated.length > 0 ? updated[0].id : "");
       }
       setPendingDeleteLedgerId(null);
+      setShowDeleteLedgerConfirm(false);
       toast({ title: "Ledger Deleted" });
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Could not delete ledger." });
@@ -225,8 +196,8 @@ export function VoucherTable() {
 
     reader.onload = async (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: "binary" });
+        const data = evt.target?.result;
+        const wb = XLSX.read(data, { type: "array" });
         
         let totalImportedCount = 0;
         let sheetsToProcess = wb.SheetNames;
@@ -289,7 +260,7 @@ export function VoucherTable() {
         
         // Refresh current view
         if (activeLedgerId) {
-          const q = query(collection(firestore, "vouchers"), where("ledgerId", "==", activeLedgerId), orderBy("voucherNo", "desc"));
+          const q = query(collection(firestore, "vouchers"), where("ledgerId", "==", activeLedgerId), orderBy("voucherNo", "asc"));
           const snapshot = await getDocs(q);
           setVouchers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher)));
         }
@@ -302,7 +273,7 @@ export function VoucherTable() {
       }
     };
 
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const handleExportFullFile = async () => {
@@ -330,6 +301,20 @@ export function VoucherTable() {
 
         const worksheet = XLSX.utils.json_to_sheet(data);
         
+        // Add column widths to prevent cramping
+        worksheet['!cols'] = [
+          { wch: 15 }, // Voucher No
+          { wch: 12 }, // Date
+          { wch: 30 }, // Paid To
+          { wch: 15 }, // Amount RO
+          { wch: 10 }, // Amount Bz
+          { wch: 15 }, // Payment Method
+          { wch: 20 }, // Bank
+          { wch: 15 }, // Ref No
+          { wch: 40 }, // Purpose
+          { wch: 10 }, // Void
+        ];
+
         // Styling...
         const range = XLSX.utils.decode_range(worksheet['!ref'] || "A1");
         for (let R = range.s.r; R <= range.e.r; ++R) {
@@ -362,7 +347,7 @@ export function VoucherTable() {
         }
 
         const sheetName = ledger.name.substring(0, 31).replace(/[\[\]\*\?\/\\\:]/g, '');
-        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName || `Sheet_${ledger.id.substring(0, 5)}`);
+        XLSX.utils.book_append_sheet(wb, worksheet, sheetName || `Sheet_${ledger.id.substring(0, 5)}`);
       }
 
       const today = new Date().toISOString().split('T')[0];
@@ -392,10 +377,57 @@ export function VoucherTable() {
         "Payment Method": v.paymentMethod,
         "Bank": v.bankName || "",
         "Cheque/Ref No": v.refNo || "",
-        "Being (Purpose)": v.purpose
+        "Being (Purpose)": v.purpose,
+        "Void": v.isVoid ? "YES" : "NO"
       }));
       
       const ws = XLSX.utils.json_to_sheet(data);
+      
+      // Add column widths to prevent cramping
+      ws['!cols'] = [
+        { wch: 15 }, // Voucher No
+        { wch: 12 }, // Date
+        { wch: 30 }, // Paid To
+        { wch: 15 }, // Amount RO
+        { wch: 10 }, // Amount Bz
+        { wch: 15 }, // Payment Method
+        { wch: 20 }, // Bank
+        { wch: 15 }, // Ref No
+        { wch: 40 }, // Purpose
+        { wch: 10 }, // Void
+      ];
+
+      // Apply consistent styling
+      const range = XLSX.utils.decode_range(ws['!ref'] || "A1");
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const addr = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!ws[addr]) continue;
+          
+          const cellStyle: any = {
+            font: { sz: 10 },
+            border: {
+              top: { style: "thin", color: { rgb: "E2E8F0" } },
+              bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+              left: { style: "thin", color: { rgb: "E2E8F0" } },
+              right: { style: "thin", color: { rgb: "E2E8F0" } }
+            }
+          };
+
+          if (R === 0) {
+            cellStyle.fill = { patternType: "solid", fgColor: { rgb: "0F172A" } };
+            cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
+          } else {
+            const v = vouchers[R - 1];
+            if (v?.isVoid) {
+              cellStyle.fill = { patternType: "solid", fgColor: { rgb: "EF4444" } };
+              cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
+            }
+          }
+          ws[addr].s = cellStyle;
+        }
+      }
+
       XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31));
       XLSX.writeFile(wb, `Tropical_Holidays_${sheetName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
       toast({ title: "Sheet Exported" });
@@ -407,8 +439,7 @@ export function VoucherTable() {
   };
 
   const filteredVouchers = useMemo(() => {
-    const list = isGlobalSearch ? globalResults : vouchers;
-    return list
+    return vouchers
       .filter((v) =>
         v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
         v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -417,10 +448,10 @@ export function VoucherTable() {
       .sort((a, b) => {
         const numA = parseInt(a.voucherNo) || 0;
         const numB = parseInt(b.voucherNo) || 0;
-        if (numA !== numB) return numB - numA; // Newest first
-        return new Date(b.date).getTime() - new Date(a.date).getTime();
+        if (numA !== numB) return numA - numB; // Ascending
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
       });
-  }, [vouchers, globalResults, isGlobalSearch, searchTerm]);
+  }, [vouchers, searchTerm]);
 
   const toggleSelect = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -480,7 +511,7 @@ export function VoucherTable() {
 
   return (
     <div className="space-y-6">
-      {!isGlobalSearch && <DashboardStats {...stats} />}
+      <DashboardStats {...stats} />
       
       <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-card text-card-foreground shadow-xl overflow-hidden">
         <div className="p-3 bg-muted/30 border-b flex flex-col sm:flex-row justify-between items-center gap-3 no-print">
@@ -488,28 +519,13 @@ export function VoucherTable() {
             <div className="relative flex-1 group">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <Input
-                placeholder={isGlobalSearch ? "Global search..." : "Search sheet..."}
+                placeholder="Search sheet..."
                 className="pl-9 h-9 text-xs bg-background border-border/50 focus:border-primary transition-all pr-12"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-              {isGlobalSearching && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-muted-foreground" />
-              )}
             </div>
-            <Button
-              variant={isGlobalSearch ? "default" : "outline"}
-              size="sm"
-              className="h-9 px-3 gap-2"
-              onClick={() => {
-                setIsGlobalSearch(!isGlobalSearch);
-                setSearchTerm("");
-              }}
-            >
-              <Globe className={cn("w-3.5 h-3.5", isGlobalSearch && "animate-pulse")} />
-              <span className="hidden sm:inline">{isGlobalSearch ? "Global" : "All Sheets"}</span>
-            </Button>
-            {isAdmin && selectedIds.size > 0 && (
+            {(isAdmin || isEmployee) && selectedIds.size > 0 && (
               <Button
                 variant="destructive"
                 size="sm"
@@ -532,10 +548,24 @@ export function VoucherTable() {
                 </Button>
               </>
             )}
-            <Button variant="outline" size="sm" onClick={handleExportSingleSheet} disabled={vouchers.length === 0 || isExporting} className="h-9 text-xs border-emerald-600 text-emerald-600">
-              <FileDown className="w-3 h-3" />
-              Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={isExporting} className="h-9 text-xs border-emerald-600 text-emerald-600">
+                  <FileDown className="w-3 h-3 mr-1" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleExportSingleSheet} disabled={vouchers.length === 0}>
+                  Export Current Sheet
+                </DropdownMenuItem>
+                {(isAdmin || isEmployee) && (
+                  <DropdownMenuItem onClick={handleExportFullFile}>
+                    Export All Sheets
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {(isAdmin || isEmployee) && (
               <Link href="/vouchers/new">
                 <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -567,7 +597,7 @@ export function VoucherTable() {
                 <Table className="border-collapse table-fixed w-full min-w-[1200px]">
                   <TableHeader className="bg-slate-900 sticky top-0 z-10">
                     <TableRow className="hover:bg-transparent border-none">
-                      {isAdmin && (
+                      {(isAdmin || isEmployee) && (
                         <TableHead className="text-white w-10 px-2 text-left">
                           <Checkbox
                             checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
@@ -584,7 +614,6 @@ export function VoucherTable() {
                       <TableHead className="text-white w-32 px-2 text-[11px] font-bold">Method</TableHead>
                       <TableHead className="text-white w-64 px-2 text-[11px] font-bold">Purpose</TableHead>
                       <TableHead className="text-white w-24 px-2 text-[11px] font-bold">Bank</TableHead>
-                      {isGlobalSearch && <TableHead className="text-white w-32 px-2 text-[11px] font-bold">Sheet</TableHead>}
                       <TableHead className="text-white w-20 px-2 text-[11px] font-bold">View</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -597,7 +626,7 @@ export function VoucherTable() {
                           className={cn("h-9 border-b", isVoid ? "bg-red-50 text-red-900" : "hover:bg-muted/30")}
                           title={v.updatedAt ? `Edited: ${new Date(v.updatedAt).toLocaleString()}` : `Created: ${new Date(v.createdAt).toLocaleString()}`}
                         >
-                          {isAdmin && (
+                          {(isAdmin || isEmployee) && (
                             <TableCell className="px-2 py-1">
                               <Checkbox checked={selectedIds.has(v.id)} onCheckedChange={() => toggleSelect(v.id)} />
                             </TableCell>
@@ -613,11 +642,6 @@ export function VoucherTable() {
                           <TableCell className="px-2 py-1 text-[10px] uppercase">{v.paymentMethod}</TableCell>
                           <TableCell className="px-2 py-1 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
                           <TableCell className="px-2 py-1 text-[11px] italic">{v.bankName || "-"}</TableCell>
-                          {isGlobalSearch && (
-                            <TableCell className="px-2 py-1 text-[11px] font-bold text-primary">
-                              {ledgers.find(l => l.id === v.ledgerId)?.name || "—"}
-                            </TableCell>
-                          )}
                           <TableCell className="px-2 py-1 flex gap-1">
                             <Link href={`/vouchers/${v.id}`}>
                               <Button variant="ghost" size="icon" className="h-6 w-6 text-primary"><Eye className="w-3.5 h-3.5" /></Button>
@@ -648,11 +672,6 @@ export function VoucherTable() {
                         </div>
                         <p className="text-sm font-bold truncate">{v.recipient}</p>
                         <p className="text-[11px] text-muted-foreground truncate">{v.purpose}</p>
-                        {isGlobalSearch && (
-                          <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase mt-1 inline-block">
-                             {ledgers.find(l => l.id === v.ledgerId)?.name}
-                          </span>
-                        )}
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-black text-base">{v.amountRO.toLocaleString()}<span className="text-[10px] ml-0.5">RO</span></p>

@@ -28,7 +28,8 @@ interface ActivityLog {
 }
 
 export default function ActivityPage() {
-  const { isAdmin, isLoading: roleLoading } = useRole();
+  const { isAdmin } = useRole();
+  const roleLoading = false;
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
