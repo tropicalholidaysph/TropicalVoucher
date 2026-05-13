@@ -1,0 +1,71 @@
+-- Tropical Holidays Secure Ledger: Unified Supabase Schema
+-- This single script initializes the entire database structure.
+
+-- 1. Prerequisites
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. Tables
+-- User roles for access control
+CREATE TABLE IF NOT EXISTS public.user_roles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    role TEXT CHECK (role IN ('admin', 'employee')) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Ledger categories (Sheets)
+CREATE TABLE IF NOT EXISTS public.ledgers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Financial vouchers
+CREATE TABLE IF NOT EXISTS public.vouchers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sequence_number INTEGER NOT NULL,
+    voucher_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    recipient TEXT NOT NULL,
+    amount NUMERIC(15, 3) NOT NULL DEFAULT 0,
+    payment_method TEXT NOT NULL,
+    bank_name TEXT,
+    ref_no TEXT,
+    purpose TEXT NOT NULL,
+    ledger_id UUID REFERENCES public.ledgers(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'void')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- System activity logs
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+    id BIGSERIAL PRIMARY KEY,
+    action TEXT NOT NULL,
+    detail TEXT,
+    uid UUID,
+    role TEXT,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Row Level Security (RLS)
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ledgers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vouchers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
+
+-- 4. Policies (Broad authenticated access, role-checking handled in app logic)
+CREATE POLICY "Full access for authenticated users on user_roles" ON public.user_roles FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access for authenticated users on ledgers" ON public.ledgers FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access for authenticated users on vouchers" ON public.vouchers FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access for authenticated users on activity_logs" ON public.activity_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- 5. Automation (Triggers)
+CREATE OR REPLACE FUNCTION handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_vouchers_updated_at BEFORE UPDATE ON vouchers FOR EACH ROW EXECUTE FUNCTION handle_updated_at();
+CREATE TRIGGER trg_user_roles_updated_at BEFORE UPDATE ON user_roles FOR EACH ROW EXECUTE FUNCTION handle_updated_at();

@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "supabase:setup": "echo 'Please copy the content of supabase/migrations/02_final_schema.sql and paste it into the Supabase SQL Editor.'"
+    "supabase:setup": "echo 'Please copy the content of supabase/schema.sql and paste it into the Supabase SQL Editor.'"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.28.0",

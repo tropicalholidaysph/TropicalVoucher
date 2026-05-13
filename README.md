@@ -26,9 +26,8 @@ The system uses a two-tiered role-based access control (RBAC) model:
 
 1. **Supabase Setup:**
    - Create a new project on [Supabase](https://supabase.com).
-   - Run the initial schema SQL (found in your Supabase dashboard or provided SQL files).
+   - Run the unified SQL schema found in `supabase/schema.sql` via the Supabase SQL Editor.
    - Enable **Anonymous Sign-ins** in Authentication > Providers.
-   - Create the necessary tables: `vouchers`, `ledgers`, `user_roles`, and `activity_logs`.
 
 2. **Vercel Deployment:**
    - Import your GitHub repository to [Vercel](https://vercel.com).
