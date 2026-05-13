@@ -7,9 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useAuth, initializeFirebase } from "@/firebase";
-import { signInAnonymously } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { useSupabase } from "@/supabase/provider";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ShieldCheck, Shield } from "lucide-react";
 import { ModeToggle } from "@/components/ModeToggle";
@@ -28,7 +26,7 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const auth = useAuth();
+  const { supabase } = useSupabase();
   const { toast } = useToast();
   const { setRole } = useRole();
 
@@ -49,14 +47,17 @@ function LoginContent() {
     if (matched) {
       setIsLoading(true);
       try {
-        const userCredential = await signInAnonymously(auth);
-        const user = userCredential.user;
-        const { firestore } = initializeFirebase();
+        const { data: { user }, error: authError } = await supabase.auth.signInAnonymously();
+        if (authError) throw authError;
+        if (!user) throw new Error("No user returned from auth");
 
-        await setDoc(doc(firestore, "user_roles", user.uid), {
+        const { error: dbError } = await supabase.from("user_roles").upsert({
+          id: user.id,
           role: matched.role,
-          updatedAt: new Date().toISOString()
+          updated_at: new Date().toISOString()
         });
+
+        if (dbError) throw dbError;
 
         localStorage.setItem("auth", "true");
         setRole(matched.role);

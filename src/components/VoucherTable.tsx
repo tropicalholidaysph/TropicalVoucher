@@ -37,17 +37,7 @@ import {
   Clock
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
-  deleteDoc,
-  doc,
-} from "firebase/firestore";
-import { initializeFirebase } from "@/firebase";
-import { useAuth } from "@/firebase";
+import { useSupabase } from "@/supabase/provider";
 import { useRole } from "@/lib/role-context";
 import { cn } from "@/lib/utils";
 import {
@@ -90,18 +80,16 @@ export function VoucherTable() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   
   const { isAdmin, isEmployee } = useRole();
-  const user = useAuth().currentUser;
+  const { user, supabase } = useSupabase();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const firestore = initializeFirebase().firestore;
 
   // Fetch Ledgers
   useEffect(() => {
     async function fetchLedgers() {
+      setLedgersLoading(true);
       try {
-        const q = query(collection(firestore, "ledgers"), orderBy("createdAt", "asc"));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
+        const data = await getLedgers();
         setLedgers(data);
         if (data.length > 0 && !activeLedgerId) {
           setActiveLedgerId(data[0].id);
@@ -113,7 +101,7 @@ export function VoucherTable() {
       }
     }
     fetchLedgers();
-  }, [firestore, activeLedgerId]);
+  }, [activeLedgerId]);
 
   // Fetch Vouchers for Active Ledger
   useEffect(() => {
@@ -122,32 +110,48 @@ export function VoucherTable() {
     async function fetchVouchers() {
       setVouchersLoading(true);
       try {
-        const q = query(
-          collection(firestore, "vouchers"),
-          where("ledgerId", "==", activeLedgerId),
-          orderBy("voucherNo", "asc")
-        );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher));
-        setVouchers(data);
+        const { data, error } = await supabase
+          .from("vouchers")
+          .select("*")
+          .eq("ledger_id", activeLedgerId)
+          .order("sequence_number", { ascending: true });
+
+        if (error) throw error;
+
+        // Transform Supabase data to legacy Voucher format
+        const legacyVouchers: Voucher[] = data.map(sv => {
+          const amountRO = Math.floor(sv.amount);
+          const amountBz = Math.round((sv.amount - amountRO) * 1000);
+          return {
+            id: sv.id,
+            voucherNo: sv.sequence_number.toString(),
+            date: sv.voucher_date || sv.created_at.split('T')[0],
+            recipient: sv.recipient || '',
+            amountRO,
+            amountBz,
+            sumInWords: '',
+            paymentMethod: sv.payment_method || 'Cash',
+            bankName: sv.bank_name || undefined,
+            refNo: sv.ref_no || undefined,
+            purpose: sv.purpose || '',
+            ledgerId: sv.ledger_id || '',
+            createdAt: sv.created_at,
+            updatedAt: sv.updated_at,
+            isVoid: sv.status === 'void'
+          };
+        });
+
+        setVouchers(legacyVouchers);
         setLastRefresh(new Date());
       } catch (error: any) {
         console.error("Error fetching vouchers:", error);
-        if (error.message?.includes("index")) {
-          toast({
-            variant: "destructive",
-            title: "Database Index Required",
-            description: "A composite index is needed for this view. Please check your browser console (F12) for the creation link.",
-            duration: 10000,
-          });
-        }
       } finally {
         setVouchersLoading(false);
       }
     }
 
     fetchVouchers();
-  }, [activeLedgerId, firestore]);
+  }, [activeLedgerId, supabase]);
 
   // Reset selection on ledger or mode change
   useEffect(() => {
@@ -155,9 +159,9 @@ export function VoucherTable() {
   }, [activeLedgerId]);
 
   async function handleAddLedger() {
-    if (!newLedgerName.trim() || !firestore || !user) return;
+    if (!newLedgerName.trim() || !user) return;
     try {
-      const ledger = await createLedger(newLedgerName, firestore, user.uid);
+      const ledger = await createLedger(newLedgerName, null, user.id);
       if (ledger) {
         setLedgers([...ledgers, ledger]);
         setActiveLedgerId(ledger.id);
@@ -173,7 +177,7 @@ export function VoucherTable() {
   async function handleDeleteLedger(id: string) {
     if (!user) return;
     try {
-      await deleteLedger(id, user.uid);
+      await deleteLedger(id, user.id);
       const updated = ledgers.filter(l => l.id !== id);
       setLedgers(updated);
       if (activeLedgerId === id) {
@@ -212,7 +216,7 @@ export function VoucherTable() {
           if (existingLedger) {
             ledgerId = existingLedger.id;
           } else {
-            const newLedger = await createLedger(sheetName, firestore, user.uid);
+            const newLedger = await createLedger(sheetName, null, user.id);
             if (newLedger) {
               ledgerId = newLedger.id;
               setLedgers(prev => [...prev, newLedger]);
@@ -222,9 +226,12 @@ export function VoucherTable() {
           if (!ledgerId) continue;
 
           // Fetch existing voucher numbers for this ledger to prevent duplicates
-          const q = query(collection(firestore, "vouchers"), where("ledgerId", "==", ledgerId));
-          const snap = await getDocs(q);
-          const existingNos = new Set(snap.docs.map(d => d.data().voucherNo));
+          const { data: existingSnap } = await supabase
+            .from("vouchers")
+            .select("sequence_number")
+            .eq("ledger_id", ledgerId);
+          
+          const existingNos = new Set(existingSnap?.map(d => d.sequence_number.toString()) || []);
 
           const vouchersForSheet = rawData.map((row: any) => ({
             ledgerId,
@@ -244,7 +251,7 @@ export function VoucherTable() {
           const skippedCount = vouchersForSheet.length - newVouchers.length;
 
           if (newVouchers.length > 0) {
-            await bulkImportVouchers(newVouchers, user!.uid);
+            await bulkImportVouchers(newVouchers, user!.id);
             totalImportedCount += newVouchers.length;
           }
 
@@ -260,9 +267,35 @@ export function VoucherTable() {
         
         // Refresh current view
         if (activeLedgerId) {
-          const q = query(collection(firestore, "vouchers"), where("ledgerId", "==", activeLedgerId), orderBy("voucherNo", "asc"));
-          const snapshot = await getDocs(q);
-          setVouchers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher)));
+          const { data: snapshot } = await supabase
+            .from("vouchers")
+            .select("*")
+            .eq("ledger_id", activeLedgerId)
+            .order("sequence_number", { ascending: true });
+            
+          if (snapshot) {
+            setVouchers(snapshot.map(sv => {
+              const amountRO = Math.floor(sv.amount);
+              const amountBz = Math.round((sv.amount - amountRO) * 1000);
+              return {
+                id: sv.id,
+                voucherNo: sv.sequence_number.toString(),
+                date: sv.voucher_date || sv.created_at.split('T')[0],
+                recipient: sv.recipient || '',
+                amountRO,
+                amountBz,
+                sumInWords: '',
+                paymentMethod: sv.payment_method || 'Cash',
+                bankName: sv.bank_name || undefined,
+                refNo: sv.ref_no || undefined,
+                purpose: sv.purpose || '',
+                ledgerId: sv.ledger_id || '',
+                createdAt: sv.created_at,
+                updatedAt: sv.updated_at,
+                isVoid: sv.status === 'void'
+              };
+            }));
+          }
         }
       } catch (error) {
         console.error("Import error:", error);
@@ -282,22 +315,30 @@ export function VoucherTable() {
       const wb = XLSX.utils.book_new();
       
       for (const ledger of ledgers) {
-        const q = query(collection(firestore, "vouchers"), where("ledgerId", "==", ledger.id), orderBy("voucherNo", "asc"));
-        const snap = await getDocs(q);
-        const ledgerVouchers = snap.docs.map(d => d.data() as Voucher);
+        const { data: ledgerVouchers } = await supabase
+          .from("vouchers")
+          .select("*")
+          .eq("ledger_id", ledger.id)
+          .order("sequence_number", { ascending: true });
 
-        const data = ledgerVouchers.map(v => ({
-          "Voucher No": v.voucherNo,
-          "Date": v.date,
-          "Paid To": v.recipient,
-          "Amount (R.O.)": v.amountRO,
-          "Amount (Bz)": v.amountBz,
-          "Payment Method": v.paymentMethod,
-          "Bank": v.bankName || "",
-          "Cheque/Ref No": v.refNo || "",
-          "Being (Purpose)": v.purpose,
-          "Void": v.isVoid ? "YES" : "NO"
-        }));
+        if (!ledgerVouchers) continue;
+
+        const data = ledgerVouchers.map(v => {
+          const amountRO = Math.floor(v.amount);
+          const amountBz = Math.round((v.amount - amountRO) * 1000);
+          return {
+            "Voucher No": v.sequence_number,
+            "Date": v.voucher_date,
+            "Paid To": v.recipient,
+            "Amount (R.O.)": amountRO,
+            "Amount (Bz)": amountBz,
+            "Payment Method": v.payment_method,
+            "Bank": v.bank_name || "",
+            "Cheque/Ref No": v.ref_no || "",
+            "Being (Purpose)": v.purpose,
+            "Void": v.status === 'void' ? "YES" : "NO"
+          };
+        });
 
         const worksheet = XLSX.utils.json_to_sheet(data);
         

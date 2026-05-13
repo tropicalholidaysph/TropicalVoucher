@@ -4,8 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { useRole } from "@/lib/role-context";
-import { initializeFirebase } from "@/firebase";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { useSupabase } from "@/supabase/provider";
 import {
   Table,
   TableBody,
@@ -29,6 +28,7 @@ interface ActivityLog {
 
 export default function ActivityPage() {
   const { isAdmin } = useRole();
+  const { supabase } = useSupabase();
   const roleLoading = false;
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,18 +55,14 @@ export default function ActivityPage() {
 
     async function fetchLogs() {
       try {
-        const { firestore } = initializeFirebase();
-        const q = query(
-          collection(firestore, "activity_logs"),
-          orderBy("timestamp", "desc"),
-          limit(100)
-        );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as ActivityLog));
-        setLogs(data);
+        const { data, error } = await supabase
+          .from("activity_logs")
+          .select("*")
+          .order("timestamp", { ascending: false })
+          .limit(100);
+
+        if (error) throw error;
+        setLogs(data as ActivityLog[]);
       } catch (error) {
         console.error("Error fetching logs:", error);
       } finally {

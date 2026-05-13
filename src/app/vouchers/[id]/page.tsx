@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Printer, ArrowLeft, Loader2, Edit2, Ban } from "lucide-react";
 import Link from "next/link";
 import { useRole } from "@/lib/role-context";
-import { useFirebase } from "@/firebase";
+import { useSupabase } from "@/supabase/provider";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +29,7 @@ export default function VoucherDetailPage() {
   const [showVoidDialog, setShowVoidDialog] = useState(false);
   const router = useRouter();
   const { isAdmin, isEmployee } = useRole();
-  const { user } = useFirebase();
+  const { user } = useSupabase();
   const { toast } = useToast();
   const isRedirecting = useRef(false);
 
@@ -60,7 +60,7 @@ export default function VoucherDetailPage() {
     if (!voucher || !user) return;
     setIsVoiding(true);
     try {
-      await voidVoucher(voucher.id, user.uid);
+      await voidVoucher(voucher.id, user.id);
       const updated = await getVoucherById(voucher.id);
       setVoucher(updated);
       setShowVoidDialog(false);

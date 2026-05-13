@@ -29,8 +29,7 @@ import { convertAmountToWords } from "@/lib/amount-utils";
 import { Save, Loader2, FileText, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Ledger, Voucher } from "@/lib/types";
-import { useFirebase, useFirestore } from "@/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { useSupabase } from "@/supabase/provider";
 import Link from "next/link";
 
 const formSchema = z.object({
@@ -56,8 +55,7 @@ export function VoucherForm({ voucher }: VoucherFormProps) {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const router = useRouter();
   const { toast } = useToast();
-  const db = useFirestore();
-  const { user } = useFirebase();
+  const { user } = useSupabase();
 
   const isEditMode = !!voucher;
 
@@ -112,11 +110,11 @@ export function VoucherForm({ voucher }: VoucherFormProps) {
     setIsSubmitting(true);
     try {
       if (isEditMode && voucher) {
-        await updateVoucher(voucher.id, values, db, user!.uid);
+        await updateVoucher(voucher.id, values, null, user!.id);
         toast({ title: "Updated Record", description: "The voucher has been successfully updated." });
         router.push(`/vouchers/${voucher.id}`);
       } else {
-        const res = await createVoucher(values, db, user!.uid);
+        const res = await createVoucher(values, null, user!.id);
         toast({ title: "Saving Record", description: "Generating your new sequential voucher..." });
         router.push(`/vouchers/${res.id}`);
       }

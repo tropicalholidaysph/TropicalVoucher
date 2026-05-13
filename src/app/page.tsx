@@ -7,7 +7,7 @@ import { VoucherTable } from "@/components/VoucherTable";
 import { LayoutDashboard, PlusCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { useUser } from "@/firebase";
+import { useUser } from "@/supabase/provider";
 import { useRole } from "@/lib/role-context";
 
 export default function Dashboard() {

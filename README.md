@@ -20,28 +20,40 @@ The system uses a two-tiered role-based access control (RBAC) model:
 - **Admin:** Full system access, including ledger management (creating/renaming/deleting sheets), data imports, and record deletion.
 - **Employee:** Operational access to create, view, edit, and export data. Restricted from administrative and destructive actions.
 
-## Deployment Guide
+## Deployment
 
-### Firebase App Hosting (Recommended)
+### Vercel + Supabase (Recommended)
 
-1. **Repository Setup:**
-   - Create a private repository on [GitHub](https://github.com).
-   - Push the project source code to your repository.
-2. **Firebase Configuration:**
-   - Navigate to the [Firebase Console](https://console.firebase.google.com/).
-   - Select **App Hosting** from the build menu.
-   - Connect your GitHub repository and follow the wizard to set up the build pipeline.
-3. **Environment Variables:**
-   - Ensure all necessary Firebase configuration variables are set in the App Hosting settings.
+1. **Supabase Setup:**
+   - Create a new project on [Supabase](https://supabase.com).
+   - Run the initial schema SQL (found in your Supabase dashboard or provided SQL files).
+   - Enable **Anonymous Sign-ins** in Authentication > Providers.
+   - Create the necessary tables: `vouchers`, `ledgers`, `user_roles`, and `activity_logs`.
 
-### Vercel Deployment
+2. **Vercel Deployment:**
+   - Import your GitHub repository to [Vercel](https://vercel.com).
+   - Add the following environment variables:
+     - `NEXT_PUBLIC_SUPABASE_URL`
+     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+     - `NEXT_PUBLIC_ADMIN_KEY`
+     - `NEXT_PUBLIC_EMPLOYEE_KEY`
+   - Deploy.
 
-1. **Import Project:**
-   - Go to [Vercel](https://vercel.com) and import your GitHub repository.
-2. **Environment Configuration:**
-   - During the setup, add your Firebase environment variables (found in `src/firebase/config.ts`) to the **Environment Variables** section in the Vercel dashboard.
-3. **Deploy:**
-   - Click deploy. Vercel will automatically detect the Next.js framework and build your application.
+### Local Development
+
+1. **Clone and Install:**
+   ```bash
+   git clone <repo-url>
+   npm install
+   ```
+
+2. **Environment Variables:**
+   - Copy `.env.example` to `.env.local` and fill in your Supabase credentials.
+
+3. **Run:**
+   ```bash
+   npm run dev
+   ```
 
 ---
 © 2026 Tropical Holidays. Confidential and Proprietary.

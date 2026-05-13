@@ -6,8 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, List, LogOut, Shield, ShieldCheck, History } from "lucide-react";
-import { useAuth } from "@/firebase";
-import { signOut } from "firebase/auth";
+import { useSupabase } from "@/supabase/provider";
 import { ModeToggle } from "@/components/ModeToggle";
 import { useRole } from "@/lib/role-context";
 import { useSessionTimeout } from "@/hooks/use-session-timeout";
@@ -15,13 +14,13 @@ import { useSessionTimeout } from "@/hooks/use-session-timeout";
 export function Navbar() {
   useSessionTimeout();
   const router = useRouter();
-  const auth = useAuth();
+  const { supabase } = useSupabase();
   const { role, isAdmin, isEmployee, setRole } = useRole();
 
   const handleLogout = async () => {
     localStorage.removeItem("auth");
     setRole(null);
-    await signOut(auth);
+    await supabase.auth.signOut();
     router.push("/login");
   };
 

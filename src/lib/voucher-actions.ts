@@ -1,41 +1,24 @@
 "use client";
 
-import { initializeFirebase } from "@/firebase";
-import {
-  collection,
-  setDoc,
-  doc,
-  getDocs,
-  getDoc,
-  query,
-  orderBy,
-  writeBatch,
-  updateDoc,
-  deleteDoc,
-  Firestore,
-  where,
-  runTransaction
-} from "firebase/firestore";
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
-import { Voucher, Ledger } from "./types";
+import { supabase } from "@/lib/supabase";
+import { Voucher, Ledger, PaymentMethod } from "./types";
 import { UserRole } from "./role-context";
 
-const getDb = () => initializeFirebase().firestore;
+// --- Helper Actions ---
 
 async function getRole(uid: string): Promise<UserRole | null> {
-  const db = getDb();
-  const docSnap = await getDoc(doc(db, "user_roles", uid));
-  if (docSnap.exists()) {
-    return docSnap.data().role as UserRole;
-  }
-  return null;
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("id", uid)
+    .single();
+
+  if (error || !data) return null;
+  return data.role as UserRole;
 }
 
 async function logActivity(action: string, detail: string, uid: string, role: string) {
-  const db = getDb();
-  const logRef = doc(collection(db, "activity_logs"));
-  await setDoc(logRef, {
+  await supabase.from("activity_logs").insert({
     action,
     detail,
     uid,
@@ -44,38 +27,81 @@ async function logActivity(action: string, detail: string, uid: string, role: st
   });
 }
 
-const VOUCHERS_COLLECTION = "vouchers";
-const LEDGERS_COLLECTION = "ledgers";
+// --- Transformation Helpers ---
+
+function transformVoucherToSupabase(v: Omit<Voucher, 'id' | 'createdAt'>) {
+  return {
+    sequence_number: parseInt(v.voucherNo),
+    voucher_date: v.date,
+    recipient: v.recipient,
+    amount: v.amountRO + (v.amountBz / 1000),
+    payment_method: v.paymentMethod,
+    bank_name: v.bankName,
+    ref_no: v.refNo,
+    purpose: v.purpose,
+    ledger_id: v.ledgerId,
+    status: v.isVoid ? 'void' : 'active',
+  };
+}
+
+function transformSupabaseToVoucher(sv: any): Voucher {
+  const amountRO = Math.floor(sv.amount);
+  const amountBz = Math.round((sv.amount - amountRO) * 1000);
+
+  return {
+    id: sv.id,
+    voucherNo: sv.sequence_number.toString(),
+    date: sv.voucher_date || sv.created_at.split('T')[0],
+    recipient: sv.recipient || '',
+    amountRO,
+    amountBz,
+    sumInWords: '', // Regenerate in UI if needed
+    paymentMethod: (sv.payment_method as PaymentMethod) || 'Cash',
+    bankName: sv.bank_name || undefined,
+    refNo: sv.ref_no || undefined,
+    purpose: sv.purpose || '',
+    ledgerId: sv.ledger_id || '',
+    createdAt: sv.created_at,
+    updatedAt: sv.updated_at,
+    isVoid: sv.status === 'void'
+  };
+}
 
 // --- Ledger Actions ---
 
 export async function getLedgers(): Promise<Ledger[]> {
-  const db = getDb();
-  const q = query(collection(db, LEDGERS_COLLECTION), orderBy("createdAt", "asc"));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
+  const { data, error } = await supabase
+    .from("ledgers")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return data.map(d => ({
+    id: d.id,
+    name: d.name,
+    createdAt: d.created_at
+  }));
 }
 
-export async function createLedger(name: string, db: Firestore, uid: string): Promise<Ledger | null> {
+export async function createLedger(name: string, _db: any, uid: string): Promise<Ledger | null> {
   const role = await getRole(uid);
   if (role !== 'admin') {
     throw new Error("Unauthorized: Only admins can create ledgers");
   }
 
-  const docRef = doc(collection(db, LEDGERS_COLLECTION));
-  const ledger = {
-    id: docRef.id,
-    name,
-    createdAt: new Date().toISOString()
-  };
+  const { data, error } = await supabase
+    .from("ledgers")
+    .insert({ name })
+    .select()
+    .single();
 
-  await setDoc(docRef, ledger).catch(err => {
-    errorEmitter.emit('permission-error', new FirestorePermissionError({
-      path: docRef.path,
-      operation: 'create',
-      requestResourceData: ledger
-    }));
-  });
+  if (error) throw error;
+
+  const ledger = {
+    id: data.id,
+    name: data.name,
+    createdAt: data.created_at
+  };
 
   await logActivity("CREATE_LEDGER", `Sheet: ${name}`, uid, role!);
 
@@ -84,65 +110,43 @@ export async function createLedger(name: string, db: Firestore, uid: string): Pr
 
 export async function renameLedger(id: string, newName: string, uid: string) {
   const role = await getRole(uid);
-  if (role !== 'admin') {
-    throw new Error("Unauthorized");
-  }
-  const db = getDb();
-  const docRef = doc(db, LEDGERS_COLLECTION, id);
-  await updateDoc(docRef, { name: newName }).catch(err => {
-    errorEmitter.emit('permission-error', new FirestorePermissionError({
-      path: docRef.path,
-      operation: 'update',
-      requestResourceData: { name: newName }
-    }));
-  });
+  if (role !== 'admin') throw new Error("Unauthorized");
+
+  const { error } = await supabase
+    .from("ledgers")
+    .update({ name: newName })
+    .eq("id", id);
+
+  if (error) throw error;
   await logActivity("RENAME_LEDGER", `ID: ${id} -> ${newName}`, uid, role!);
 }
 
 export async function deleteLedger(id: string, uid: string) {
   const role = await getRole(uid);
-  if (role !== 'admin') {
-    throw new Error("Unauthorized");
-  }
-  const db = getDb();
-  
-  // 1. Delete the ledger document
-  const docRef = doc(db, LEDGERS_COLLECTION, id);
-  await deleteDoc(docRef);
+  if (role !== 'admin') throw new Error("Unauthorized");
 
-  // 2. Delete all vouchers associated with this ledger
-  const vq = query(collection(db, VOUCHERS_COLLECTION), where("ledgerId", "==", id));
-  const vSnap = await getDocs(vq);
-  
-  if (!vSnap.empty) {
-    const batch = writeBatch(db);
-    vSnap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-  }
+  // 1. Delete all vouchers associated with this ledger (Supabase should handle this if cascade is set, but doing it manually for safety)
+  await supabase.from("vouchers").delete().eq("ledger_id", id);
 
-  // 3. Delete the counter document
-  const counterRef = doc(db, "ledger_counters", id);
-  await deleteDoc(counterRef).catch(() => {}); // Ignore if doesn't exist
+  // 2. Delete the ledger
+  const { error } = await supabase.from("ledgers").delete().eq("id", id);
 
+  if (error) throw error;
   await logActivity("DELETE_LEDGER", `ID: ${id} and all its vouchers`, uid, role!);
 }
 
 export async function getNextVoucherNumber(ledgerId: string): Promise<number> {
-  const db = getDb();
-  
-  const existingQ = query(
-    collection(db, VOUCHERS_COLLECTION),
-    where("ledgerId", "==", ledgerId)
-  );
-  
-  const existingSnap = await getDocs(existingQ);
-  
-  const maxExisting = existingSnap.docs.reduce((max, d) => {
-    const n = parseInt(d.data().voucherNo) || 0;
-    return n > max ? n : max;
-  }, 0);
+  const { data, error } = await supabase
+    .from("vouchers")
+    .select("sequence_number")
+    .eq("ledger_id", ledgerId)
+    .order("sequence_number", { ascending: false })
+    .limit(1);
 
-  return maxExisting + 1;
+  if (error) return 1;
+  if (!data || data.length === 0) return 1;
+
+  return (data[0].sequence_number || 0) + 1;
 }
 
 // --- Voucher Actions ---
@@ -150,130 +154,106 @@ export async function getNextVoucherNumber(ledgerId: string): Promise<number> {
 export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[], uid: string) {
   const role = await getRole(uid);
   if (!role) throw new Error("Unauthorized");
-  
-  const db = getDb();
-  const chunkSize = 400;
-  const now = new Date().toISOString();
 
-  for (let i = 0; i < vouchers.length; i += chunkSize) {
-    const chunk = vouchers.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
+  const supabaseVouchers = vouchers.map(v => transformVoucherToSupabase(v));
 
-    chunk.forEach((v) => {
-      const docRef = doc(collection(db, VOUCHERS_COLLECTION));
-      batch.set(docRef, {
-        ...v,
-        createdAt: now,
-      });
-    });
-
-    await batch.commit();
-  }
+  const { error } = await supabase.from("vouchers").insert(supabaseVouchers);
+  if (error) throw error;
 
   await logActivity("BULK_IMPORT", `Imported ${vouchers.length} vouchers`, uid, role);
-
   return { success: true, count: vouchers.length };
 }
 
 export async function bulkDeleteVouchers(ids: string[], uid: string) {
   const role = await getRole(uid);
-  if (role !== 'admin') {
-    throw new Error("Unauthorized");
-  }
-  const db = getDb();
-  const chunkSize = 400;
+  if (role !== 'admin') throw new Error("Unauthorized");
 
-  for (let i = 0; i < ids.length; i += chunkSize) {
-    const chunk = ids.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
-
-    chunk.forEach((id) => {
-      const docRef = doc(db, VOUCHERS_COLLECTION, id);
-      batch.delete(docRef);
-    });
-
-    await batch.commit();
-  }
+  const { error } = await supabase.from("vouchers").delete().in("id", ids);
+  if (error) throw error;
 
   await logActivity("BULK_DELETE", `Deleted ${ids.length} vouchers`, uid, role);
-
   return { success: true };
 }
 
-export async function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Firestore, uid: string) {
+export async function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, _db: any, uid: string) {
   const role = await getRole(uid);
-  if (role !== 'admin' && role !== 'employee') {
-    throw new Error("Unauthorized");
-  }
-  const docRef = doc(collection(db, VOUCHERS_COLLECTION));
-  const id = docRef.id;
-  const data = {
-    ...voucher,
-    createdAt: new Date().toISOString(),
-  };
+  if (role !== 'admin' && role !== 'employee') throw new Error("Unauthorized");
 
-  await setDoc(docRef, data).catch((error) => {
-    errorEmitter.emit('permission-error', new FirestorePermissionError({
-      path: docRef.path,
-      operation: 'create',
-      requestResourceData: data
-    }));
-  });
+  const { data, error } = await supabase
+    .from("vouchers")
+    .insert(transformVoucherToSupabase(voucher))
+    .select()
+    .single();
+
+  if (error) throw error;
 
   await logActivity("CREATE_VOUCHER", `Voucher #${voucher.voucherNo} for ${voucher.recipient}`, uid, role!);
-
-  return { success: true, id };
+  return { success: true, id: data.id };
 }
 
-export async function updateVoucher(id: string, voucherData: Partial<Voucher>, db: Firestore, uid: string) {
+export async function updateVoucher(id: string, voucherData: Partial<Voucher>, _db: any, uid: string) {
   const role = await getRole(uid);
-  if (role !== 'admin' && role !== 'employee') {
-    throw new Error("Unauthorized");
+  if (role !== 'admin' && role !== 'employee') throw new Error("Unauthorized");
+
+  const updatePayload: any = {};
+  if (voucherData.voucherNo) updatePayload.sequence_number = parseInt(voucherData.voucherNo);
+  if (voucherData.date) updatePayload.voucher_date = voucherData.date;
+  if (voucherData.recipient) updatePayload.recipient = voucherData.recipient;
+  if (voucherData.amountRO !== undefined || voucherData.amountBz !== undefined) {
+    // Need current values if only one is provided? For simplicity assuming both or partial update handles it
+    // Actually, in Partial<Voucher>, we might only have one.
+    // Let's fetch current or just use what's given.
+    const { data: current } = await supabase.from("vouchers").select("amount").eq("id", id).single();
+    const currentRO = Math.floor(current?.amount || 0);
+    const currentBz = Math.round(((current?.amount || 0) - currentRO) * 1000);
+    const ro = voucherData.amountRO !== undefined ? voucherData.amountRO : currentRO;
+    const bz = voucherData.amountBz !== undefined ? voucherData.amountBz : currentBz;
+    updatePayload.amount = ro + (bz / 1000);
   }
-  const docRef = doc(db, VOUCHERS_COLLECTION, id);
+  if (voucherData.paymentMethod) updatePayload.payment_method = voucherData.paymentMethod;
+  if (voucherData.bankName) updatePayload.bank_name = voucherData.bankName;
+  if (voucherData.refNo) updatePayload.ref_no = voucherData.refNo;
+  if (voucherData.purpose) updatePayload.purpose = voucherData.purpose;
+  if (voucherData.ledgerId) updatePayload.ledger_id = voucherData.ledgerId;
+  if (voucherData.isVoid !== undefined) updatePayload.status = voucherData.isVoid ? 'void' : 'active';
 
-  await updateDoc(docRef, {
-    ...voucherData,
-    updatedAt: new Date().toISOString(),
-  }).catch((error) => {
-    errorEmitter.emit('permission-error', new FirestorePermissionError({
-      path: docRef.path,
-      operation: 'update',
-      requestResourceData: voucherData
-    }));
-  });
+  updatePayload.updated_at = new Date().toISOString();
 
+  const { error } = await supabase
+    .from("vouchers")
+    .update(updatePayload)
+    .eq("id", id);
+
+  if (error) throw error;
   await logActivity("EDIT_VOUCHER", `Voucher ID: ${id}`, uid, role!);
-
   return { success: true };
 }
 
 export async function getVoucherById(id: string): Promise<Voucher | null> {
-  const db = getDb();
-  try {
-    const docRef = doc(db, VOUCHERS_COLLECTION, id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() } as Voucher;
-    }
-    return null;
-  } catch (error) {
-    return null;
-  }
+  const { data, error } = await supabase
+    .from("vouchers")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error || !data) return null;
+  return transformSupabaseToVoucher(data);
 }
 
 export async function voidVoucher(id: string, uid: string) {
   const role = await getRole(uid);
   if (role !== 'admin' && role !== 'employee') throw new Error("Unauthorized");
-  const db = getDb();
-  await updateDoc(doc(db, VOUCHERS_COLLECTION, id), {
-    isVoid: true,
-    recipient: "VOID / NO DATA",
-    amountRO: 0,
-    amountBz: 0,
-    sumInWords: "VOID",
-    updatedAt: new Date().toISOString(),
-  });
 
+  const { error } = await supabase
+    .from("vouchers")
+    .update({
+      status: 'void',
+      recipient: "VOID / NO DATA",
+      amount: 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) throw error;
   await logActivity("VOID_VOUCHER", `Voucher ID: ${id}`, uid, role!);
 }
